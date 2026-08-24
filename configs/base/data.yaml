@@ -1,0 +1,5 @@
+processed_root: data/processed
+manifest_root: data/manifests
+train_split: train.jsonl
+validation_split: validation.jsonl
+test_split: test.jsonl

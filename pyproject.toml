@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "cpo-trl"
+version = "0.1.0"
+description = "Standalone TRL training controls for CPO experiments"
+authors = ["Jordan Buwa Mbouobda"]
+packages = [{ include = "cpo_trl", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+torch = "2.6.0"
+transformers = "5.6.0"
+trl = "0.24.0"
+peft = "0.18.1"
+accelerate = "1.11.0"
+datasets = "4.0.0"
+tensorboard = "2.20.0"
+pyyaml = "6.0.3"
+matplotlib = "3.10.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+
+[build-system]
+requires = ["poetry-core>=1.8"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+testpaths = ["tests"]

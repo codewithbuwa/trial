@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Environments
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Large/local artifacts
+outputs/**
+!outputs/**/
+!outputs/**/.gitkeep
+data/raw/**
+data/processed/**
+data/audits/**
+!data/**/
+!data/**/.gitkeep
+experiments/**/results/**
+!experiments/**/
+!experiments/**/.gitkeep
+runs/
+checkpoints/
+models/
+wandb/
+mlruns/
+tensorboard/
+*.log
