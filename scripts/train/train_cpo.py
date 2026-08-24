@@ -20,7 +20,7 @@ from cpo_trl.eval import (
 from cpo_trl.finite import assert_finite_gradients, assert_finite_loss
 from cpo_trl.peft import load_causal_lm_for_training, lora_settings_from_config
 from cpo_trl.sampling import CPOPairAwareBatchSampler
-from scripts.train.common import add_common_args, parse_with_config
+from common import add_common_args, parse_with_config
 
 
 def cpo_state_payload(loss_computer: CPOLossComputer, *, global_step: int, epoch: float) -> dict[str, object]:

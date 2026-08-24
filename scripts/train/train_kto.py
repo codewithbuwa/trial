@@ -15,7 +15,7 @@ from cpo_trl.peft import (
     peft_config_for_new_adapter,
 )
 from cpo_trl.trl_compat import ensure_trl_optional_dependency_stubs
-from scripts.train.common import add_common_args, parse_with_config, training_args_dict
+from common import add_common_args, parse_with_config, training_args_dict
 
 ensure_trl_optional_dependency_stubs()
 from trl import KTOConfig, KTOTrainer
