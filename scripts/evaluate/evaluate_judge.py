@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from cpo_trl.data.datasets import load_jsonl, validate_rows
-from cpo_trl.data.formatting import format_prompt
 
 
 def response_length_stats(responses: list[str]) -> dict[str, float | int | None]:
@@ -371,6 +370,7 @@ def generate_model_outputs(
     import torch
     from transformers import AutoTokenizer
 
+    from cpo_trl.data.formatting import format_prompt
     from cpo_trl.models.peft import load_causal_lm_for_training
 
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
@@ -505,13 +505,50 @@ def generation_length_summary(generations: dict[str, list[str]]) -> dict[str, di
     }
 
 
+def load_generation_records(path: Path) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
+    records = load_jsonl(path)
+    by_prompt: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    prompt_order: list[str] = []
+    for record in records:
+        prompt_id = str(record["prompt_id"])
+        model = str(record["model"])
+        if prompt_id not in by_prompt:
+            prompt_order.append(prompt_id)
+        if model in by_prompt[prompt_id]:
+            raise ValueError(f"duplicate generation for prompt_id={prompt_id!r}, model={model!r}")
+        by_prompt[prompt_id][model] = record
+    model_names = sorted({str(record["model"]) for record in records})
+    if len(model_names) < 2:
+        raise ValueError("judge evaluation requires generations for at least two models")
+    rows: list[dict[str, Any]] = []
+    generations = {model: [] for model in model_names}
+    for prompt_id in prompt_order:
+        prompt_records = by_prompt[prompt_id]
+        missing = [model for model in model_names if model not in prompt_records]
+        if missing:
+            raise ValueError(f"prompt_id={prompt_id!r} is missing generation(s): {missing}")
+        first = prompt_records[model_names[0]]
+        rows.append(
+            {
+                "prompt_id": prompt_id,
+                "cluster_id": first.get("cluster_id", "unknown"),
+                "instruction": first["instruction"],
+                "input": first.get("input", ""),
+            }
+        )
+        for model in model_names:
+            generations[model].append(str(prompt_records[model].get("response", "")))
+    return rows, generations
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Judge generated outputs from multiple checkpoints.")
-    parser.add_argument("--eval-file", type=Path, default=Path("data/processed/dpo/eval.jsonl"))
-    parser.add_argument("--models", nargs="+", required=True, help="NAME=PATH entries, e.g. SFT=Qwen/Qwen2.5-1.5B-Instruct")
+    parser = argparse.ArgumentParser(description="Judge saved generations from multiple models.")
+    parser.add_argument("--generations-file", type=Path, help="JSONL produced by generate_from_prompts.py")
+    parser.add_argument("--eval-file", type=Path, default=Path("data/processed/dpo/validation.jsonl"))
+    parser.add_argument("--models", nargs="+", help="Legacy NAME=PATH entries for generating then judging.")
     parser.add_argument("--output-jsonl", type=Path, default=Path("outputs/judge/pairwise.jsonl"))
     parser.add_argument("--summary-json", type=Path, default=Path("outputs/judge/summary.json"))
-    parser.add_argument("--max-prompts", type=int, default=100)
+    parser.add_argument("--max-prompts", type=int, default=None, help="Legacy model-generation mode only.")
     parser.add_argument("--max-prompt-length", type=int, default=768)
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--temperature", type=float, default=0.7)
@@ -555,23 +592,28 @@ def validate_judge_settings(args: argparse.Namespace) -> str:
 
 def main() -> None:
     args = parse_args()
-    model_specs = parse_model_specs(args.models)
-    rows = validate_rows(load_jsonl(args.eval_file), "dpo")
-    if args.max_prompts:
-        rows = rows[: args.max_prompts]
-    generations = {
-        name: generate_model_outputs(
-            rows=rows,
-            model_name=name,
-            model_path=path,
-            max_prompt_length=args.max_prompt_length,
-            max_new_tokens=args.max_new_tokens,
-            temperature=args.temperature,
-            top_p=args.top_p,
-            batch_size=args.batch_size,
-        )
-        for name, path in model_specs
-    }
+    if args.generations_file:
+        rows, generations = load_generation_records(args.generations_file)
+    else:
+        if not args.models:
+            raise ValueError("--generations-file is required unless --models is provided")
+        model_specs = parse_model_specs(args.models)
+        rows = validate_rows(load_jsonl(args.eval_file), "dpo")
+        if args.max_prompts:
+            rows = rows[: args.max_prompts]
+        generations = {
+            name: generate_model_outputs(
+                rows=rows,
+                model_name=name,
+                model_path=path,
+                max_prompt_length=args.max_prompt_length,
+                max_new_tokens=args.max_new_tokens,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                batch_size=args.batch_size,
+            )
+            for name, path in model_specs
+        }
     api_key = validate_judge_settings(args)
     pairrm_ranker = (
         load_pairrm_ranker(args.judge_model)
@@ -641,7 +683,8 @@ def main() -> None:
         for record in records:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
     summary = {
-        "eval_file": str(args.eval_file),
+        "eval_file": str(args.eval_file) if not args.generations_file else None,
+        "generations_file": str(args.generations_file) if args.generations_file else None,
         "judge_provider": args.judge_provider,
         "judge_model": args.judge_model,
         "judge_base_url": args.openai_base_url

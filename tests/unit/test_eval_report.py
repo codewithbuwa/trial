@@ -45,7 +45,7 @@ def test_build_report_aggregates_eval_training_judge_and_flags(tmp_path: Path) -
         sft_dir / "winrate.json",
         {
             "model": "output/sft",
-            "eval_file": "data/processed/dpo/eval.jsonl",
+            "eval_file": "data/processed/dpo/validation.jsonl",
             "total": 2,
             "normalized_winrate": 0.4,
             "mean_normalized_margin": -0.1,

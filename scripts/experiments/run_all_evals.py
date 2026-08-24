@@ -143,6 +143,7 @@ def build_commands(args: argparse.Namespace) -> list[list[str]]:
         str(judge_summary),
         "--judge-timeout",
         str(args.judge_timeout),
+        "--position-balanced",
     ]
     if args.openai_judge:
         judge_model = args.openai_judge_model or os.environ.get("OPENAI_JUDGE_MODEL")

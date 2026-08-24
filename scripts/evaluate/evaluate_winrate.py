@@ -39,7 +39,7 @@ def main() -> None:
     if not rows or "chosen" not in rows[0] or "rejected" not in rows[0]:
         raise ValueError(
             "winrate evaluation requires chosen/rejected pair rows. "
-            "Use data/processed/dpo/eval.jsonl after running prepare_ultrafeedback.py."
+            "Use data/processed/dpo/validation.jsonl after running prepare_ultrafeedback.py."
         )
     rows = validate_rows(rows, "dpo")
     if args.limit:

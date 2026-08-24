@@ -19,6 +19,7 @@ class CPOConfig:
     lambda_undesirable: float = 1.0
     kl_coef: float = 0.0
     z_momentum: float = 0.9
+    z_nonnegative: bool = True
 
 
 @dataclass
@@ -37,13 +38,17 @@ class CPOLossComputer:
 
     def __init__(self, config: CPOConfig | None = None) -> None:
         self.config = config or CPOConfig()
-        self.z = ClusterReferenceZ(momentum=self.config.z_momentum)
+        self.z = ClusterReferenceZ(
+            momentum=self.config.z_momentum,
+            nonnegative=self.config.z_nonnegative,
+        )
 
     def state_dict(self) -> dict[str, Any]:
         return {
             "z_values": dict(self.z.values),
             "z_counts": dict(self.z.counts),
             "z_momentum": self.z.momentum,
+            "z_nonnegative": self.z.nonnegative,
         }
 
     def load_state_dict(self, state: dict[str, Any]) -> None:
@@ -57,6 +62,8 @@ class CPOLossComputer:
         }
         if "z_momentum" in state:
             self.z.momentum = float(state["z_momentum"])
+        if "z_nonnegative" in state:
+            self.z.nonnegative = bool(state["z_nonnegative"])
 
     def __call__(
         self,

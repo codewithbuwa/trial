@@ -10,6 +10,7 @@ from scripts.evaluate.evaluate_judge import (
     build_comparisons,
     format_reward_model_input,
     generation_length_summary,
+    load_generation_records,
     pairrm_judge,
     parse_judge_json,
     parse_pairwise_winner_text,
@@ -253,6 +254,36 @@ def test_generation_length_summary_groups_by_model() -> None:
 
     assert summary["SFT"]["mean_words"] == 1
     assert summary["DPO"]["mean_words"] == 2
+
+
+def test_load_generation_records_groups_saved_generations(tmp_path) -> None:
+    path = tmp_path / "generations.jsonl"
+    records = [
+        {
+            "model": "DPO",
+            "prompt_id": "p1",
+            "cluster_id": "coding",
+            "instruction": "Do x",
+            "input": "",
+            "response": "answer dpo",
+        },
+        {
+            "model": "CPO",
+            "prompt_id": "p1",
+            "cluster_id": "coding",
+            "instruction": "Do x",
+            "input": "",
+            "response": "answer cpo",
+        },
+    ]
+    path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+
+    rows, generations = load_generation_records(path)
+
+    assert rows == [
+        {"prompt_id": "p1", "cluster_id": "coding", "instruction": "Do x", "input": ""}
+    ]
+    assert generations == {"CPO": ["answer cpo"], "DPO": ["answer dpo"]}
 
 
 def test_summarize_judgments_counts_ties_as_half_win() -> None:

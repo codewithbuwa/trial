@@ -254,7 +254,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--run", action="store_true", help="Run commands after writing configs.")
     parser.add_argument("--eval", action="store_true", help="Evaluate each completed run with evaluate_winrate.py.")
-    parser.add_argument("--eval-file", type=Path, default=Path("data/processed/dpo/eval.jsonl"))
+    parser.add_argument("--eval-file", type=Path, default=Path("data/processed/dpo/validation.jsonl"))
     parser.add_argument("--eval-batch-size", type=int, default=4)
     parser.add_argument("--eval-limit", type=int)
     parser.add_argument(

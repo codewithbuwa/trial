@@ -58,6 +58,7 @@ def test_build_outputs_flattens_kto_and_cpo_after_split() -> None:
     assert len(outputs["cpo"]) == 2
     assert {row["label"] for row in outputs["kto"]} == {True, False}
     assert {row["label"] for row in outputs["cpo"]} == {True, False}
+    assert {row["cluster_id"] for row in outputs["kto"]} == {"general"}
     assert all(row["prompt_id"] == "p0" for rows in outputs.values() for row in rows)
 
 
@@ -77,3 +78,20 @@ def test_assign_random_clusters_is_prompt_stable_and_balanced() -> None:
         cluster_id = next(iter(cluster_ids))
         counts[cluster_id] = counts.get(cluster_id, 0) + 1
     assert counts == {"r_0": 2, "r_1": 2, "r_2": 2, "r_3": 2}
+
+
+def test_assign_random_clusters_matched_preserves_cluster_distribution() -> None:
+    rows = [pair_row(f"p{index}") for index in range(6)]
+    for index, row in enumerate(rows):
+        row["cluster_id"] = "general" if index < 3 else ("coding" if index < 5 else "math")
+
+    clustered = assign_random_clusters(rows, seed=0, matched=True)
+
+    original_counts = {}
+    clustered_counts = {}
+    for row in rows:
+        original_counts[row["cluster_id"]] = original_counts.get(row["cluster_id"], 0) + 1
+    for row in clustered:
+        clustered_counts[row["cluster_id"]] = clustered_counts.get(row["cluster_id"], 0) + 1
+    assert clustered_counts == original_counts
+    assert {row["prompt_id"] for row in clustered} == {row["prompt_id"] for row in rows}

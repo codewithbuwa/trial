@@ -20,6 +20,7 @@ from cpo_trl.evaluation.teacher_forced import (
 from cpo_trl.utils.finite import assert_finite_gradients, assert_finite_loss
 from cpo_trl.models.peft import load_causal_lm_for_training, lora_settings_from_config
 from cpo_trl.sampling.pair_sampler import CPOPairAwareBatchSampler
+from cpo_trl.utils.run_manifest import write_run_manifest
 from common import add_common_args, parse_with_config
 
 
@@ -202,6 +203,12 @@ def main() -> None:
         args.cluster_sampling = "proportional"
     if not hasattr(args, "resume_from_checkpoint"):
         args.resume_from_checkpoint = None
+    write_run_manifest(
+        args.output_dir,
+        method="cpo",
+        args=args,
+        extra={"z_nonnegative": args.z_baseline == "token_kl"},
+    )
 
     from transformers import AutoTokenizer, get_scheduler, set_seed
 
@@ -309,6 +316,7 @@ def main() -> None:
             lambda_undesirable=args.lambda_undesirable,
             kl_coef=args.kl_coef,
             z_momentum=args.z_momentum,
+            z_nonnegative=args.z_baseline == "token_kl",
         )
     )
     global_step = 0

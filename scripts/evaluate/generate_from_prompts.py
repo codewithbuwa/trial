@@ -14,9 +14,34 @@ PROMPT_HEADER_RE = re.compile(r"^\s*(\d+)[.)]\s+(.*)$")
 
 
 def parse_prompt_file(path: Path) -> list[dict[str, Any]]:
-    """Parse a text file containing numbered prompts."""
+    """Parse a JSONL manifest or a text file containing numbered prompts."""
 
-    prompts: list[dict[str, Any]] = []
+    if path.suffix == ".jsonl":
+        prompts: list[dict[str, Any]] = []
+        with path.open("r", encoding="utf-8") as handle:
+            for line_no, line in enumerate(handle, start=1):
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                row = json.loads(stripped)
+                if not isinstance(row, dict):
+                    raise ValueError(f"{path}:{line_no}: expected JSON object")
+                instruction = str(row.get("instruction") or row.get("prompt") or "")
+                if not instruction:
+                    raise ValueError(f"{path}:{line_no}: missing instruction")
+                prompts.append(
+                    {
+                        "prompt_id": str(row.get("prompt_id", len(prompts))),
+                        "instruction": instruction,
+                        "input": str(row.get("input", "")),
+                        "cluster_id": str(row.get("cluster_id", "unknown")),
+                    }
+                )
+        if not prompts:
+            raise ValueError(f"no prompts found in {path}")
+        return prompts
+
+    prompts = []
     current_index: int | None = None
     current_lines: list[str] = []
 
@@ -108,10 +133,14 @@ def generate_for_model(
     temperature: float,
     top_p: float,
     batch_size: int,
+    seed: int,
 ) -> list[dict[str, Any]]:
     import torch
     from transformers import AutoTokenizer
 
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -156,10 +185,16 @@ def generate_for_model(
                         "model": model_name,
                         "model_path": model_path,
                         "prompt_id": row["prompt_id"],
+                        "cluster_id": row.get("cluster_id", "unknown"),
                         "instruction": row["instruction"],
                         "input": row.get("input", ""),
                         "response": response.strip(),
                         "response_words": len(response.split()),
+                        "generation_seed": seed,
+                        "max_prompt_length": max_prompt_length,
+                        "max_new_tokens": max_new_tokens,
+                        "temperature": temperature,
+                        "top_p": top_p,
                     }
                 )
     print(f"Generated {len(records)} outputs for {model_name}")
@@ -204,9 +239,7 @@ def write_markdown(path: Path, records: list[dict[str, Any]]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Generate model outputs for a numbered text prompt file."
-    )
+    parser = argparse.ArgumentParser(description="Generate model outputs for a prompt manifest.")
     parser.add_argument("--prompts-file", type=Path, default=Path("data/test_prompts_10.txt"))
     parser.add_argument(
         "--models",
@@ -218,9 +251,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-md", type=Path, default=Path("outputs/generations/generations.md"))
     parser.add_argument("--max-prompt-length", type=int, default=768)
     parser.add_argument("--max-new-tokens", type=int, default=256)
-    parser.add_argument("--temperature", type=float, default=0.7)
+    parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-p", type=float, default=0.9)
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
 
@@ -241,6 +275,7 @@ def main() -> None:
                 temperature=args.temperature,
                 top_p=args.top_p,
                 batch_size=args.batch_size,
+                seed=args.seed,
             )
         )
     write_jsonl(args.output_jsonl, all_records)

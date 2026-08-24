@@ -12,7 +12,7 @@ def test_build_commands_runs_all_local_eval_steps() -> None:
     args = argparse.Namespace(
         output_root=Path("output"),
         data_root=Path("data/processed"),
-        eval_split="eval.jsonl",
+        eval_split="validation.jsonl",
         beta=0.02,
         batch_size=4,
         max_prompts=30,
@@ -49,7 +49,7 @@ def test_build_commands_can_switch_to_openai_judge() -> None:
     args = argparse.Namespace(
         output_root=Path("output"),
         data_root=Path("data/processed"),
-        eval_split="eval.jsonl",
+        eval_split="validation.jsonl",
         beta=0.02,
         batch_size=4,
         max_prompts=100,
@@ -82,7 +82,7 @@ def test_build_commands_can_switch_to_prometheus_judge() -> None:
     args = argparse.Namespace(
         output_root=Path("output"),
         data_root=Path("data/processed"),
-        eval_split="eval.jsonl",
+        eval_split="validation.jsonl",
         beta=0.02,
         batch_size=4,
         max_prompts=100,
@@ -115,7 +115,7 @@ def test_build_commands_rejects_multiple_remote_judges() -> None:
     args = argparse.Namespace(
         output_root=Path("output"),
         data_root=Path("data/processed"),
-        eval_split="eval.jsonl",
+        eval_split="validation.jsonl",
         beta=0.02,
         batch_size=4,
         max_prompts=100,
@@ -135,7 +135,7 @@ def test_validate_inputs_fails_before_huggingface_fallback(tmp_path: Path) -> No
     args = argparse.Namespace(
         output_root=tmp_path / "output",
         data_root=tmp_path / "data" / "ultrafeedback",
-        eval_split="eval.jsonl",
+        eval_split="validation.jsonl",
     )
 
     with pytest.raises(FileNotFoundError, match="--output-root outputs"):

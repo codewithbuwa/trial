@@ -110,16 +110,27 @@ Keep generation and judging separate.
 Generate model responses first:
 
 ```bash
+poetry run python scripts/data/build_manifests.py \
+  --source-file data/processed/dpo/validation.jsonl
+
 poetry run python scripts/evaluate/generate_from_prompts.py \
-  --model-name-or-path outputs/checkpoints/cpo \
   --prompts-file data/manifests/eval_manifest_natural.jsonl \
-  --output-jsonl outputs/generations/cpo.jsonl
+  --models DPO=outputs/checkpoints/dpo KTO=outputs/checkpoints/kto CPO=outputs/checkpoints/cpo \
+  --temperature 0 \
+  --seed 42 \
+  --output-jsonl outputs/generations/main.jsonl
 ```
 
-Then run judge or win-rate evaluation over saved generations/results:
+Then run the judge over saved generations. The judge does not need training
+checkpoints in this mode:
 
 ```bash
-poetry run python scripts/evaluate/evaluate_judge.py --help
+poetry run python scripts/evaluate/evaluate_judge.py \
+  --generations-file outputs/generations/main.jsonl \
+  --position-balanced \
+  --output-jsonl outputs/judge/main_pairwise.jsonl \
+  --summary-json outputs/judge/main_summary.json
+
 poetry run python scripts/evaluate/evaluate_winrate.py --help
 ```
 

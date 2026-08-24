@@ -15,6 +15,7 @@ from cpo_trl.models.peft import (
     peft_config_for_new_adapter,
 )
 from cpo_trl.utils.trl_compat import ensure_trl_optional_dependency_stubs
+from cpo_trl.utils.run_manifest import write_run_manifest
 from common import add_common_args, parse_with_config, training_args_dict
 
 ensure_trl_optional_dependency_stubs()
@@ -28,6 +29,7 @@ def main() -> None:
     args = parse_with_config(parser)
     if not hasattr(args, "beta"):
         args.beta = 0.1
+    write_run_manifest(args.output_dir, method="dpo", args=args)
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=True)
     if tokenizer.pad_token is None:

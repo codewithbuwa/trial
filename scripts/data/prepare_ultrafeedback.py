@@ -55,6 +55,7 @@ def assign_random_clusters(
     seed: int,
     n_clusters: int = 4,
     prefix: str = "random",
+    matched: bool = False,
 ) -> list[dict[str, str]]:
     """Assign prompt-stable random cluster ids to pair rows."""
 
@@ -62,11 +63,20 @@ def assign_random_clusters(
         raise ValueError("n_clusters must be >= 1")
     prompt_ids = sorted({row["prompt_id"] for row in pair_rows})
     rng = random.Random(seed)
-    rng.shuffle(prompt_ids)
-    prompt_clusters = {
-        prompt_id: f"{prefix}_{index % n_clusters}"
-        for index, prompt_id in enumerate(prompt_ids)
-    }
+    if matched:
+        prompt_to_cluster = {
+            row["prompt_id"]: row["cluster_id"]
+            for row in sorted(pair_rows, key=lambda row: row["prompt_id"])
+        }
+        labels = [prompt_to_cluster[prompt_id] for prompt_id in sorted(prompt_to_cluster)]
+        rng.shuffle(labels)
+        prompt_clusters = dict(zip(sorted(prompt_to_cluster), labels, strict=True))
+    else:
+        rng.shuffle(prompt_ids)
+        prompt_clusters = {
+            prompt_id: f"{prefix}_{index % n_clusters}"
+            for index, prompt_id in enumerate(prompt_ids)
+        }
     return [
         {
             **row,
@@ -148,8 +158,9 @@ def build_outputs(pair_rows: list[dict[str, str]]) -> dict[str, list[dict[str, A
             "instruction": row["instruction"],
             "input": row["input"],
         }
-        kto_rows.append({**base, "completion": row["chosen"], "label": True})
-        kto_rows.append({**base, "completion": row["rejected"], "label": False})
+        kto_base = {**base, "cluster_id": row["cluster_id"]}
+        kto_rows.append({**kto_base, "completion": row["chosen"], "label": True})
+        kto_rows.append({**kto_base, "completion": row["rejected"], "label": False})
         cpo_base = {**base, "cluster_id": row["cluster_id"]}
         cpo_rows.append({**cpo_base, "completion": row["chosen"], "label": True})
         cpo_rows.append({**cpo_base, "completion": row["rejected"], "label": False})
@@ -166,7 +177,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--cluster-mode",
-        choices=("keyword", "random4"),
+        choices=("keyword", "random4", "random4_matched"),
         default="keyword",
         help="How to assign cluster_id values for DPO/CPO rows.",
     )
@@ -182,12 +193,13 @@ def main() -> None:
     if args.limit:
         dataset = dataset.select(range(min(args.limit, len(dataset))))
     pair_rows = [normalize_row(dict(row)) for row in dataset]
-    if args.cluster_mode == "random4":
+    if args.cluster_mode in {"random4", "random4_matched"}:
         pair_rows = assign_random_clusters(
             pair_rows,
             seed=args.seed,
             n_clusters=4,
             prefix=args.random_cluster_prefix,
+            matched=args.cluster_mode == "random4_matched",
         )
     train_pairs, eval_pairs, test_pairs = split_by_prompt(
         pair_rows,
@@ -203,7 +215,7 @@ def main() -> None:
     for kind, rows in train_outputs.items():
         write_jsonl(f"{root}/{kind}/train.jsonl", rows)
     for kind, rows in eval_outputs.items():
-        write_jsonl(f"{root}/{kind}/eval.jsonl", rows)
+        write_jsonl(f"{root}/{kind}/validation.jsonl", rows)
     for kind, rows in test_outputs.items():
         write_jsonl(f"{root}/{kind}/test.jsonl", rows)
     print(

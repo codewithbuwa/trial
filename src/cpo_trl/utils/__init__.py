@@ -6,6 +6,7 @@ from cpo_trl.utils.finite import (
     assert_finite_tensor,
 )
 from cpo_trl.utils.trl_compat import ensure_trl_optional_dependency_stubs
+from cpo_trl.utils.run_manifest import write_run_manifest
 
 __all__ = [
     "FiniteTrainingCallback",
@@ -14,4 +15,5 @@ __all__ = [
     "assert_finite_loss",
     "assert_finite_tensor",
     "ensure_trl_optional_dependency_stubs",
+    "write_run_manifest",
 ]
