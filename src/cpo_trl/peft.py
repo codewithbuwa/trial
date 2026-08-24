@@ -4,16 +4,46 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 @dataclass(frozen=True)
 class LoraSettings:
-    r: int = 32
-    lora_alpha: int = 16
+    r: int = 16
+    lora_alpha: int = 32
     lora_dropout: float = 0.05
-    target_modules: str | tuple[str, ...] = "all-linear"
+    target_modules: str | tuple[str, ...] = (
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj",
+    )
     bias: str = "none"
     task_type: str = "CAUSAL_LM"
+
+
+def lora_settings_from_config(config: Any) -> LoraSettings:
+    """Build LoRA settings from a parsed YAML/CLI namespace or mapping."""
+
+    def get(name: str, default: Any) -> Any:
+        if isinstance(config, dict):
+            return config.get(name, default)
+        return getattr(config, name, default)
+
+    target_modules = get("target_modules", LoraSettings.target_modules)
+    if isinstance(target_modules, list):
+        target_modules = tuple(target_modules)
+    return LoraSettings(
+        r=int(get("r", LoraSettings.r)),
+        lora_alpha=int(get("lora_alpha", LoraSettings.lora_alpha)),
+        lora_dropout=float(get("lora_dropout", LoraSettings.lora_dropout)),
+        target_modules=target_modules,
+        bias=str(get("bias", LoraSettings.bias)),
+        task_type=str(get("task_type", LoraSettings.task_type)),
+    )
 
 
 def build_lora_config(settings: LoraSettings | None = None):
@@ -47,6 +77,7 @@ def load_causal_lm_for_training(
     *,
     use_lora: bool,
     create_lora: bool = False,
+    lora_settings: LoraSettings | None = None,
 ):
     """Load a causal LM, including PEFT adapter checkpoints.
 
@@ -73,17 +104,22 @@ def load_causal_lm_for_training(
     if use_lora and create_lora:
         from peft import get_peft_model
 
-        model = get_peft_model(model, build_lora_config())
+        model = get_peft_model(model, build_lora_config(lora_settings))
     ensure_transformers_warning_state(model)
     return model
 
 
-def peft_config_for_new_adapter(model_name_or_path: str | Path, *, use_lora: bool):
+def peft_config_for_new_adapter(
+    model_name_or_path: str | Path,
+    *,
+    use_lora: bool,
+    lora_settings: LoraSettings | None = None,
+):
     """Return a LoRA config only when training should create a new adapter."""
 
     if not use_lora or is_adapter_checkpoint(model_name_or_path):
         return None
-    return build_lora_config()
+    return build_lora_config(lora_settings)
 
 
 def ensure_transformers_warning_state(model):

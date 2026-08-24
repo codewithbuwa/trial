@@ -21,6 +21,7 @@ DEFAULT_BETAS = [0.01, 0.02, 0.05]
 DEFAULT_MAX_GRAD_NORMS = [0.3, 1.0]
 DEFAULT_ALPHAS = [0.3]
 DEFAULT_CPO_Z_BASELINES = ["token_kl"]
+BASE_CONFIG_FILES = ("model.yaml", "data.yaml", "lora.yaml", "training.yaml")
 
 
 def parse_float_list(value: str) -> list[float]:
@@ -42,14 +43,30 @@ def slug_float(value: float) -> str:
 
 
 def load_base_config(method: str, config_dir: Path) -> dict[str, Any]:
-    path = config_dir / f"{method}.yaml"
-    if not path.exists():
-        raise FileNotFoundError(f"missing base config: {path}")
+    config: dict[str, Any] = {}
+    for name in BASE_CONFIG_FILES:
+        path = config_dir / "base" / name
+        if path.exists():
+            with path.open("r", encoding="utf-8") as handle:
+                loaded = yaml.safe_load(handle) or {}
+            if not isinstance(loaded, dict):
+                raise ValueError(f"config must be a mapping: {path}")
+            config.update(loaded)
+
+    candidates = [
+        config_dir / method / f"{method}_controlled.yaml",
+        config_dir / f"{method}.yaml",
+    ]
+    path = next((candidate for candidate in candidates if candidate.exists()), None)
+    if path is None:
+        checked = ", ".join(str(candidate) for candidate in candidates)
+        raise FileNotFoundError(f"missing base config for {method}; checked: {checked}")
     with path.open("r", encoding="utf-8") as handle:
         loaded = yaml.safe_load(handle) or {}
     if not isinstance(loaded, dict):
         raise ValueError(f"config must be a mapping: {path}")
-    return dict(loaded)
+    config.update(loaded)
+    return config
 
 
 def build_sweep_configs(args: argparse.Namespace) -> list[dict[str, Any]]:
@@ -87,6 +104,11 @@ def build_sweep_configs(args: argparse.Namespace) -> list[dict[str, Any]]:
                 "output_dir": str(output_dir),
                 "learning_rate": learning_rate,
                 "max_grad_norm": max_grad_norm,
+                "weight_decay": (
+                    args.weight_decay
+                    if args.weight_decay is not None
+                    else base_config.get("weight_decay", 0.0)
+                ),
                 "beta": beta,
                 "num_train_epochs": args.num_train_epochs,
                 "max_seq_length": args.max_seq_length,
@@ -109,7 +131,7 @@ def build_sweep_configs(args: argparse.Namespace) -> list[dict[str, Any]]:
                 "poetry",
                 "run",
                 "python",
-                f"scripts/train_{method}.py",
+                f"scripts/train/train_{method}.py",
                 "--config",
                 str(config_path),
             ]
@@ -215,6 +237,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--betas", type=parse_float_list)
     parser.add_argument("--alphas", type=parse_float_list)
     parser.add_argument("--max-grad-norms", type=parse_float_list)
+    parser.add_argument("--weight-decay", type=float)
     parser.add_argument(
         "--z-baselines",
         type=parse_str_list,

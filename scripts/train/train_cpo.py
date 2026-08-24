@@ -18,7 +18,7 @@ from cpo_trl.eval import (
     sequence_logps_with_token_kl,
 )
 from cpo_trl.finite import assert_finite_gradients, assert_finite_loss
-from cpo_trl.peft import load_causal_lm_for_training
+from cpo_trl.peft import load_causal_lm_for_training, lora_settings_from_config
 from cpo_trl.sampling import CPOPairAwareBatchSampler
 from scripts.train.common import add_common_args, parse_with_config
 
@@ -215,10 +215,12 @@ def main() -> None:
     tokenizer = AutoTokenizer.from_pretrained(policy_model_path, use_fast=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    lora_settings = lora_settings_from_config(args)
     model = load_causal_lm_for_training(
         policy_model_path,
         use_lora=args.use_lora,
         create_lora=resume_checkpoint is None,
+        lora_settings=lora_settings,
     )
     ref_model = load_causal_lm_for_training(args.model_name_or_path, use_lora=False)
     ref_model.requires_grad_(False)
@@ -286,7 +288,11 @@ def main() -> None:
     dataloader = DataLoader(encoded, **dataloader_kwargs)
     if len(dataloader) == 0:
         raise ValueError("CPO dataloader has no batches; check pair-aware batching eligibility or dataset size")
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=args.learning_rate,
+        weight_decay=args.weight_decay,
+    )
     total_micro_steps = max(1, math.ceil(len(dataloader) * args.num_train_epochs))
     total_steps = max(1, math.ceil(total_micro_steps / args.gradient_accumulation_steps))
     scheduler = get_scheduler(

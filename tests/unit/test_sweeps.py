@@ -15,6 +15,7 @@ from scripts.experiments.run_preference_sweeps import (
 
 
 def write_config(path: Path, method: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         yaml.safe_dump(
             {
@@ -36,9 +37,10 @@ def test_parse_float_list() -> None:
 
 def test_build_sweep_configs_adds_cpo_alpha_only(tmp_path: Path) -> None:
     config_dir = tmp_path / "configs"
-    config_dir.mkdir()
+    (config_dir / "base").mkdir(parents=True)
+    (config_dir / "base" / "training.yaml").write_text("weight_decay: 0.123\n", encoding="utf-8")
     for method in ("dpo", "cpo"):
-        write_config(config_dir / f"{method}.yaml", method)
+        write_config(config_dir / method / f"{method}_controlled.yaml", method)
     args = argparse.Namespace(
         methods=["dpo", "cpo"],
         config_dir=config_dir,
@@ -50,6 +52,7 @@ def test_build_sweep_configs_adds_cpo_alpha_only(tmp_path: Path) -> None:
         betas=[0.02],
         alphas=[0.3],
         max_grad_norms=[0.3, 1.0],
+        weight_decay=None,
         z_baselines=["token_kl"],
         num_train_epochs=0.1,
         max_seq_length=512,
@@ -72,6 +75,8 @@ def test_build_sweep_configs_adds_cpo_alpha_only(tmp_path: Path) -> None:
     assert {run["max_grad_norm"] for run in dpo_runs} == {0.3, 1.0}
     assert {run["alpha"] for run in cpo_runs} == {0.3}
     assert {run["z_baseline"] for run in cpo_runs} == {"token_kl"}
+    assert all(f"scripts/train/train_{run['method']}.py" in run["command"] for run in runs)
+    assert all(run["config"]["weight_decay"] == 0.123 for run in runs)
 
 
 def test_write_sweep_creates_manifest_and_configs(tmp_path: Path) -> None:
@@ -82,7 +87,7 @@ def test_write_sweep_creates_manifest_and_configs(tmp_path: Path) -> None:
             "config": {"train_file": "data/processed/dpo/train.jsonl"},
             "config_path": tmp_path / "configs" / "dpo_lr1em6_b0p02.yaml",
             "output_dir": tmp_path / "dpo_lr1em6_b0p02",
-            "command": ["poetry", "run", "python", "scripts/train_dpo.py", "--config", "x"],
+            "command": ["poetry", "run", "python", "scripts/train/train_dpo.py", "--config", "x"],
             "learning_rate": 1e-6,
             "beta": 0.02,
             "alpha": None,

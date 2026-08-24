@@ -9,13 +9,14 @@ import yaml
 
 DEFAULTS: dict[str, Any] = {
     "train_file": None,
-    "model_name_or_path": "Qwen/Qwen2.5-0.5B-Instruct",
+    "model_name_or_path": "Qwen/Qwen2.5-1.5B-Instruct",
     "output_dir": None,
     "max_seq_length": 1024,
     "per_device_train_batch_size": 1,
     "gradient_accumulation_steps": 8,
     "learning_rate": 2e-5,
     "max_grad_norm": 0.3,
+    "weight_decay": 0.0,
     "warmup_ratio": 0.03,
     "warmup_steps": 0,
     "num_train_epochs": 1.0,
@@ -25,6 +26,30 @@ DEFAULTS: dict[str, Any] = {
     "seed": 42,
     "use_lora": False,
 }
+
+
+BASE_CONFIG_FILES = (
+    Path("configs/base/model.yaml"),
+    Path("configs/base/data.yaml"),
+    Path("configs/base/lora.yaml"),
+    Path("configs/base/training.yaml"),
+)
+
+
+def load_yaml_mapping(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        loaded = yaml.safe_load(handle) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"config must be a mapping: {path}")
+    return dict(loaded)
+
+
+def load_base_configs() -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    for path in BASE_CONFIG_FILES:
+        if path.exists():
+            values.update(load_yaml_mapping(path))
+    return values
 
 
 def add_common_args(parser: argparse.ArgumentParser) -> None:
@@ -37,6 +62,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--gradient-accumulation-steps", type=int, default=argparse.SUPPRESS)
     parser.add_argument("--learning-rate", type=float, default=argparse.SUPPRESS)
     parser.add_argument("--max-grad-norm", type=float, default=argparse.SUPPRESS)
+    parser.add_argument("--weight-decay", type=float, default=argparse.SUPPRESS)
     parser.add_argument("--warmup-ratio", type=float, default=argparse.SUPPRESS)
     parser.add_argument("--warmup-steps", type=int, default=argparse.SUPPRESS)
     parser.add_argument("--num-train-epochs", type=float, default=argparse.SUPPRESS)
@@ -50,9 +76,9 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
 def parse_with_config(parser: argparse.ArgumentParser) -> argparse.Namespace:
     args = parser.parse_args()
     values: dict[str, Any] = dict(DEFAULTS)
+    values.update(load_base_configs())
     if args.config:
-        with args.config.open("r", encoding="utf-8") as handle:
-            values.update(yaml.safe_load(handle) or {})
+        values.update(load_yaml_mapping(args.config))
     cli_values = {key: value for key, value in vars(args).items() if key != "config"}
     values.update(cli_values)
     if values["train_file"] is None:
@@ -69,6 +95,7 @@ def training_args_dict(args: argparse.Namespace) -> dict[str, Any]:
         "gradient_accumulation_steps": args.gradient_accumulation_steps,
         "learning_rate": args.learning_rate,
         "max_grad_norm": args.max_grad_norm,
+        "weight_decay": args.weight_decay,
         "num_train_epochs": args.num_train_epochs,
         "logging_steps": args.logging_steps,
         "save_steps": args.save_steps,
