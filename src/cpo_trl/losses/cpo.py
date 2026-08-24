@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
 import torch
 import torch.nn.functional as F
 
-from cpo_trl.finite import assert_finite_tensor
+from cpo_trl.references.ema import ClusterReferenceZ
+from cpo_trl.utils.finite import assert_finite_tensor
 
 
 def reduce_loss(loss: torch.Tensor, reduction: str) -> torch.Tensor:
@@ -79,39 +78,6 @@ def sampled_kl_regularizer(
     losses = kl_values.clamp_min(0.0)
     assert_finite_tensor(losses, "kl_regularizer")
     return reduce_loss(losses, reduction)
-
-
-@dataclass
-class ClusterReferenceZ:
-    """EMA state for cluster-level reference offsets."""
-
-    momentum: float = 0.9
-    values: dict[str, float] = field(default_factory=dict)
-    counts: dict[str, int] = field(default_factory=dict)
-
-    def tensor_for(
-        self,
-        cluster_ids: list[str],
-        *,
-        device: torch.device,
-        dtype: torch.dtype,
-    ) -> torch.Tensor:
-        return torch.tensor(
-            [self.values.get(cluster_id, 0.0) for cluster_id in cluster_ids],
-            device=device,
-            dtype=dtype,
-        )
-
-    def update(self, cluster_ids: list[str], reference_values: torch.Tensor) -> None:
-        detached = reference_values.detach().float().cpu()
-        grouped: dict[str, list[float]] = {}
-        for cluster_id, value in zip(cluster_ids, detached.tolist(), strict=True):
-            grouped.setdefault(cluster_id, []).append(value)
-        for cluster_id, values in grouped.items():
-            batch_mean = max(0.0, sum(values) / len(values))
-            previous = self.values.get(cluster_id, batch_mean)
-            self.values[cluster_id] = self.momentum * previous + (1.0 - self.momentum) * batch_mean
-            self.counts[cluster_id] = self.counts.get(cluster_id, 0) + len(values)
 
 
 def cpo_combined_loss(

@@ -9,14 +9,14 @@ import torch
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 
-from cpo_trl.data import load_jsonl, validate_rows
-from cpo_trl.eval import (
+from cpo_trl.data.datasets import load_jsonl, validate_rows
+from cpo_trl.evaluation.teacher_forced import (
     collate_pair_batch,
     encode_pair,
     pair_reward_margins,
     sequence_logp_sums_and_counts,
 )
-from cpo_trl.peft import load_causal_lm_for_training
+from cpo_trl.models.peft import load_causal_lm_for_training
 
 
 def parse_args() -> argparse.Namespace:

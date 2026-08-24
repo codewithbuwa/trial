@@ -5,15 +5,15 @@ import argparse
 from datasets import Dataset
 from transformers import AutoTokenizer
 
-from cpo_trl.data import load_training_rows
-from cpo_trl.finite import FiniteTrainingCallback
-from cpo_trl.formatting import format_sft_text
-from cpo_trl.peft import (
+from cpo_trl.data.datasets import load_training_rows
+from cpo_trl.utils.finite import FiniteTrainingCallback
+from cpo_trl.data.formatting import format_sft_text
+from cpo_trl.models.peft import (
     load_causal_lm_for_training,
     lora_settings_from_config,
     peft_config_for_new_adapter,
 )
-from cpo_trl.trl_compat import ensure_trl_optional_dependency_stubs
+from cpo_trl.utils.trl_compat import ensure_trl_optional_dependency_stubs
 from common import add_common_args, parse_with_config, training_args_dict
 
 ensure_trl_optional_dependency_stubs()

@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-from cpo_trl.formatting import apply_chat_template, chat_messages
-from cpo_trl.peft import load_causal_lm_for_training
+from cpo_trl.data.formatting import apply_chat_template, chat_messages
+from cpo_trl.models.peft import load_causal_lm_for_training
 
 
 PROMPT_HEADER_RE = re.compile(r"^\s*(\d+)[.)]\s+(.*)$")

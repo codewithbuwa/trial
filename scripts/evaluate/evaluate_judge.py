@@ -13,8 +13,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from cpo_trl.data import load_jsonl, validate_rows
-from cpo_trl.formatting import format_prompt
+from cpo_trl.data.datasets import load_jsonl, validate_rows
+from cpo_trl.data.formatting import format_prompt
 
 
 def response_length_stats(responses: list[str]) -> dict[str, float | int | None]:
@@ -371,7 +371,7 @@ def generate_model_outputs(
     import torch
     from transformers import AutoTokenizer
 
-    from cpo_trl.peft import load_causal_lm_for_training
+    from cpo_trl.models.peft import load_causal_lm_for_training
 
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
     if tokenizer.pad_token is None:

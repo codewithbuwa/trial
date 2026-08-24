@@ -28,6 +28,24 @@ analysis/      Paper-ready tables, figures, and notebooks
 tests/         Unit, integration, and regression tests
 ```
 
+The internal Python package is split by responsibility:
+
+```text
+src/cpo_trl/data/          JSONL schemas and prompt formatting
+src/cpo_trl/losses/        CPO, unary CPO, DPO, and KTO loss entrypoints
+src/cpo_trl/references/    EMA and log-ratio/reference helpers
+src/cpo_trl/sampling/      Pair-aware and sampling utilities
+src/cpo_trl/trainers/      Stateful trainer/loss-computer components
+src/cpo_trl/evaluation/    Teacher-forced evaluation utilities
+src/cpo_trl/metrics/       Preference metrics callbacks and records
+src/cpo_trl/models/        Model loading and PEFT helpers
+src/cpo_trl/utils/         Finite checks and compatibility utilities
+```
+
+Compatibility wrappers such as `cpo_trl.losses`, `cpo_trl.data`, and
+`cpo_trl.cpo_trainer` remain available while scripts and tests migrate to the
+new explicit paths.
+
 ## Install
 
 ```bash

@@ -8,18 +8,18 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 
-from cpo_trl.data import load_training_rows
-from cpo_trl.cpo_trainer import CPOConfig, CPOLossComputer
-from cpo_trl.eval import (
+from cpo_trl.data.datasets import load_training_rows
+from cpo_trl.trainers.cpo_trainer import CPOConfig, CPOLossComputer
+from cpo_trl.evaluation.teacher_forced import (
     collate_mismatched_unary_batch,
     collate_unary_batch,
     encode_unary,
     sequence_logps,
     sequence_logps_with_token_kl,
 )
-from cpo_trl.finite import assert_finite_gradients, assert_finite_loss
-from cpo_trl.peft import load_causal_lm_for_training, lora_settings_from_config
-from cpo_trl.sampling import CPOPairAwareBatchSampler
+from cpo_trl.utils.finite import assert_finite_gradients, assert_finite_loss
+from cpo_trl.models.peft import load_causal_lm_for_training, lora_settings_from_config
+from cpo_trl.sampling.pair_sampler import CPOPairAwareBatchSampler
 from common import add_common_args, parse_with_config
 
 

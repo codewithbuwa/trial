@@ -8,7 +8,7 @@ from typing import Any
 
 from datasets import load_dataset
 
-from cpo_trl.data import write_jsonl
+from cpo_trl.data.datasets import write_jsonl
 
 
 def text_from_message(value: Any) -> str:
