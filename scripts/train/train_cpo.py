@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import shutil
 from pathlib import Path
 
 import torch
@@ -22,6 +23,8 @@ from cpo_trl.models.peft import load_causal_lm_for_training, lora_settings_from_
 from cpo_trl.sampling.pair_sampler import CPOPairAwareBatchSampler
 from cpo_trl.utils.run_manifest import write_run_manifest
 from common import add_common_args, parse_with_config
+
+CHECKPOINT_PREFIX = "checkpoint-"
 
 
 def cpo_state_payload(loss_computer: CPOLossComputer, *, global_step: int, epoch: float) -> dict[str, object]:
@@ -66,6 +69,32 @@ def save_training_state(
         },
         path,
     )
+
+
+def checkpoint_step(path: Path) -> int | None:
+    if not path.is_dir() or not path.name.startswith(CHECKPOINT_PREFIX):
+        return None
+    step_text = path.name.removeprefix(CHECKPOINT_PREFIX)
+    if not step_text.isdigit():
+        return None
+    return int(step_text)
+
+
+def prune_cpo_checkpoints(output_dir: str | Path, save_total_limit: int | None) -> list[Path]:
+    if save_total_limit is None or save_total_limit <= 0:
+        return []
+    checkpoints = [
+        (step, path)
+        for path in Path(output_dir).iterdir()
+        if (step := checkpoint_step(path)) is not None
+    ]
+    checkpoints.sort(key=lambda item: item[0])
+    stale_checkpoints = checkpoints[:-save_total_limit]
+    removed: list[Path] = []
+    for _step, path in stale_checkpoints:
+        shutil.rmtree(path)
+        removed.append(path)
+    return removed
 
 
 def move_optimizer_state(optimizer: torch.optim.Optimizer, device: torch.device) -> None:
@@ -601,6 +630,7 @@ def main() -> None:
                         micro_step=micro_step,
                         epoch=current_epoch,
                     )
+                    prune_cpo_checkpoints(args.output_dir, args.save_total_limit)
 
     model.save_pretrained(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
