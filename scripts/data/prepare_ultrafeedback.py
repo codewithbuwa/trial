@@ -3,10 +3,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import random
+import sys
 from collections import Counter
+from pathlib import Path
 from typing import Any
 
 from datasets import load_dataset
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from cpo_trl.data.datasets import write_jsonl
 
