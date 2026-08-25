@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 
 
-MODELS = ("dpo", "kto", "cpo")
+MODELS = ("sft", "dpo", "kto", "cpo_unary", "cpo")
+PREFERENCE_MODELS = ("kto", "cpo_unary", "cpo")
 
 
 def validate_inputs(args: argparse.Namespace) -> None:
@@ -78,19 +79,19 @@ def build_commands(args: argparse.Namespace) -> list[list[str]]:
                 str(output_root / model / "winrate.json"),
             ]
         )
-    commands.extend(
-        [
+    for model in PREFERENCE_MODELS:
+        commands.append(
             [
                 "poetry",
                 "run",
                 "python",
                 "scripts/evaluate/evaluate_unary_rewards.py",
                 "--eval-file",
-                str(data_root / "kto" / args.eval_split),
+                str(data_root / ("kto" if model == "kto" else "cpo") / args.eval_split),
                 "--row-kind",
-                "kto",
+                "kto" if model == "kto" else "cpo",
                 "--model-name-or-path",
-                str(output_root / "kto"),
+                str(output_root / model),
                 "--reference-model-name-or-path",
                 reference_model_name_or_path,
                 "--beta",
@@ -98,30 +99,9 @@ def build_commands(args: argparse.Namespace) -> list[list[str]]:
                 "--batch-size",
                 str(args.batch_size),
                 "--output-json",
-                str(output_root / "kto" / "unary_rewards.json"),
-            ],
-            [
-                "poetry",
-                "run",
-                "python",
-                "scripts/evaluate/evaluate_unary_rewards.py",
-                "--eval-file",
-                str(data_root / "cpo" / args.eval_split),
-                "--row-kind",
-                "cpo",
-                "--model-name-or-path",
-                str(output_root / "cpo"),
-                "--reference-model-name-or-path",
-                reference_model_name_or_path,
-                "--beta",
-                str(args.beta),
-                "--batch-size",
-                str(args.batch_size),
-                "--output-json",
-                str(output_root / "cpo" / "unary_rewards.json"),
-            ],
-        ]
-    )
+                str(output_root / model / "unary_rewards.json"),
+            ]
+        )
     judge_command = [
         "poetry",
         "run",
@@ -130,8 +110,10 @@ def build_commands(args: argparse.Namespace) -> list[list[str]]:
         "--eval-file",
         str(data_root / "dpo" / args.eval_split),
         "--models",
+        f"SFT={output_root / 'sft'}",
         f"DPO={output_root / 'dpo'}",
         f"KTO={output_root / 'kto'}",
+        f"CPO_UNARY={output_root / 'cpo_unary'}",
         f"CPO={output_root / 'cpo'}",
         "--max-prompts",
         str(args.max_prompts),
@@ -171,18 +153,22 @@ def build_commands(args: argparse.Namespace) -> list[list[str]]:
                 "run",
                 "python",
                 "scripts/experiments/plot_evals.py",
-                "--result",
-                f"DPO={output_root / 'dpo' / 'winrate.json'}",
-                "--result",
-                f"KTO={output_root / 'kto' / 'winrate.json'}",
-                "--result",
-                f"CPO={output_root / 'cpo' / 'winrate.json'}",
+                *[
+                    value
+                    for model in MODELS
+                    for value in (
+                        "--result",
+                        f"{model.upper()}={output_root / model / 'winrate.json'}",
+                    )
+                ],
+                *[
+                    value
+                    for model in MODELS
+                    for value in (
                 "--training-dir",
-                f"DPO={output_root / 'dpo'}",
-                "--training-dir",
-                f"KTO={output_root / 'kto'}",
-                "--training-dir",
-                f"CPO={output_root / 'cpo'}",
+                f"{model.upper()}={output_root / model}",
+                    )
+                ],
                 "--output-dir",
                 str(artifact_root / "metrics"),
             ],
@@ -193,6 +179,30 @@ def build_commands(args: argparse.Namespace) -> list[list[str]]:
                 "scripts/evaluate/build_eval_report.py",
                 "--output-root",
                 str(output_root),
+                *[
+                    value
+                    for model in MODELS
+                    for value in (
+                        "--result",
+                        f"{model.upper()}={output_root / model / 'winrate.json'}",
+                    )
+                ],
+                *[
+                    value
+                    for model in MODELS
+                    for value in (
+                        "--training-dir",
+                        f"{model.upper()}={output_root / model}",
+                    )
+                ],
+                *[
+                    value
+                    for model in PREFERENCE_MODELS
+                    for value in (
+                        "--unary-result",
+                        f"{model.upper()}={output_root / model / 'unary_rewards.json'}",
+                    )
+                ],
                 "--judge-summary",
                 str(judge_summary),
                 "--judge-pairwise",

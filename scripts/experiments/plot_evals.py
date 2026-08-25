@@ -17,9 +17,10 @@ import matplotlib.pyplot as plt
 
 
 DEFAULT_RESULTS = {
-    "SFT": Path("Qwen/Qwen2.5-1.5B-Instruct/winrate.json"),
+    "SFT": Path("outputs/checkpoints/sft/winrate.json"),
     "DPO": Path("outputs/checkpoints/dpo/winrate.json"),
     "KTO": Path("outputs/checkpoints/kto/winrate.json"),
+    "CPO_UNARY": Path("outputs/checkpoints/cpo_unary/winrate.json"),
     "CPO": Path("outputs/checkpoints/cpo/winrate.json"),
 }
 

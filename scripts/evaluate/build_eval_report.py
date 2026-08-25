@@ -13,6 +13,7 @@ DEFAULT_MODELS = {
     "SFT": "sft",
     "DPO": "dpo",
     "KTO": "kto",
+    "CPO_UNARY": "cpo_unary",
     "CPO": "cpo",
 }
 SCALAR_TYPES = (int, float, str, bool)
@@ -530,7 +531,7 @@ def build_report(
             cluster_metrics[cluster_id][model] = metrics
     training_diagnostics = {}
     for model, directory in training_dirs.items():
-        if model == "CPO":
+        if model.startswith("CPO"):
             training_diagnostics[model] = cpo_training_report(directory)
         else:
             trainer_state = final_from_trainer_state(directory / "trainer_state.json")
@@ -582,13 +583,13 @@ def parse_args() -> argparse.Namespace:
         "--result",
         action="append",
         default=[],
-        help="Model result as NAME=path/to/winrate.json. Defaults to output/{sft,dpo,kto,cpo}/winrate.json.",
+        help="Model result as NAME=path/to/winrate.json. Defaults to output/{sft,dpo,kto,cpo_unary,cpo}/winrate.json.",
     )
     parser.add_argument(
         "--training-dir",
         action="append",
         default=[],
-        help="Training log directory as NAME=path. Defaults to output/{sft,dpo,kto,cpo}.",
+        help="Training log directory as NAME=path. Defaults to output/{sft,dpo,kto,cpo_unary,cpo}.",
     )
     parser.add_argument(
         "--unary-result",
@@ -610,6 +611,7 @@ def main() -> None:
     training_defaults = {name: args.output_root / slug for name, slug in DEFAULT_MODELS.items()}
     unary_defaults = {
         "KTO": args.output_root / "kto" / "unary_rewards.json",
+        "CPO_UNARY": args.output_root / "cpo_unary" / "unary_rewards.json",
         "CPO": args.output_root / "cpo" / "unary_rewards.json",
     }
     judge_summary = args.judge_summary or args.output_root / "judge" / "summary.json"

@@ -26,13 +26,15 @@ def test_build_commands_runs_all_local_eval_steps() -> None:
 
     commands = build_commands(args)
 
-    assert len(commands) == 8
+    assert len(commands) == 11
     winrate_commands = [command for command in commands if "scripts/evaluate/evaluate_winrate.py" in command]
-    assert len(winrate_commands) == 3
+    assert len(winrate_commands) == 5
     assert all("--reference-model-name-or-path" in command for command in winrate_commands)
     unary_commands = [command for command in commands if "scripts/evaluate/evaluate_unary_rewards.py" in command]
-    assert len(unary_commands) == 2
+    assert len(unary_commands) == 3
     judge_command = next(command for command in commands if "scripts/evaluate/evaluate_judge.py" in command)
+    assert "SFT=output/sft" in judge_command
+    assert "CPO_UNARY=output/cpo_unary" in judge_command
     assert "--judge-provider" in judge_command
     assert judge_command[judge_command.index("--judge-provider") + 1] == "heuristic"
     assert judge_command[judge_command.index("--max-prompts") + 1] == "30"
@@ -63,7 +65,7 @@ def test_build_commands_can_switch_to_openai_judge() -> None:
 
     commands = build_commands(args)
 
-    assert len(commands) == 8
+    assert len(commands) == 11
     judge_commands = [command for command in commands if "scripts/evaluate/evaluate_judge.py" in command]
     assert len(judge_commands) == 1
     openai_command = judge_commands[0]
