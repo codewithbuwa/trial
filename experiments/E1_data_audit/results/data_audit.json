@@ -20,8 +20,13 @@
         }
       },
       "validation": {
-        "exists": false,
-        "path": "data/processed/sft/validation.jsonl"
+        "exists": true,
+        "path": "data/processed/sft/validation.jsonl",
+        "rows": 1000,
+        "prompts": 1000,
+        "clusters": {
+          "unknown": 1000
+        }
       },
       "test": {
         "exists": true,
@@ -48,8 +53,17 @@
         "pairs": 7994
       },
       "validation": {
-        "exists": false,
-        "path": "data/processed/dpo/validation.jsonl"
+        "exists": true,
+        "path": "data/processed/dpo/validation.jsonl",
+        "rows": 1000,
+        "prompts": 1000,
+        "clusters": {
+          "coding": 125,
+          "general": 707,
+          "math": 29,
+          "writing": 139
+        },
+        "pairs": 1000
       },
       "test": {
         "exists": true,
@@ -72,7 +86,10 @@
         "rows": 16000,
         "prompts": 8000,
         "clusters": {
-          "unknown": 16000
+          "coding": 1890,
+          "general": 11174,
+          "math": 406,
+          "writing": 2530
         },
         "labels": {
           "desirable": 8000,
@@ -80,8 +97,20 @@
         }
       },
       "validation": {
-        "exists": false,
-        "path": "data/processed/kto/validation.jsonl"
+        "exists": true,
+        "path": "data/processed/kto/validation.jsonl",
+        "rows": 2000,
+        "prompts": 1000,
+        "clusters": {
+          "coding": 250,
+          "general": 1414,
+          "math": 58,
+          "writing": 278
+        },
+        "labels": {
+          "desirable": 1000,
+          "undesirable": 1000
+        }
       },
       "test": {
         "exists": true,
@@ -89,7 +118,10 @@
         "rows": 2000,
         "prompts": 1000,
         "clusters": {
-          "unknown": 2000
+          "coding": 238,
+          "general": 1414,
+          "math": 46,
+          "writing": 302
         },
         "labels": {
           "desirable": 1000,
@@ -121,8 +153,26 @@
         }
       },
       "validation": {
-        "exists": false,
-        "path": "data/processed/cpo/validation.jsonl"
+        "exists": true,
+        "path": "data/processed/cpo/validation.jsonl",
+        "rows": 2000,
+        "prompts": 1000,
+        "clusters": {
+          "coding": 250,
+          "general": 1414,
+          "math": 58,
+          "writing": 278
+        },
+        "labels": {
+          "desirable": 1000,
+          "undesirable": 1000
+        },
+        "pairing": {
+          "responses": 2000,
+          "prompt_cluster_groups": 1000,
+          "pair_eligible_prompt_cluster_groups": 1000,
+          "pair_eligible_rate": 1.0
+        }
       },
       "test": {
         "exists": true,
