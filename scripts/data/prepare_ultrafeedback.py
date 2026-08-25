@@ -86,6 +86,12 @@ def assign_random_clusters(
     ]
 
 
+def assign_single_cluster(pair_rows: list[dict[str, str]], *, cluster_id: str = "global") -> list[dict[str, str]]:
+    """Assign every prompt to one global cluster for cluster-ablation controls."""
+
+    return [{**row, "cluster_id": cluster_id} for row in pair_rows]
+
+
 def split_by_prompt(
     pair_rows: list[dict[str, str]],
     *,
@@ -177,7 +183,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--cluster-mode",
-        choices=("keyword", "random4", "random4_matched"),
+        choices=("keyword", "single_cluster", "random4", "random4_matched"),
         default="keyword",
         help="How to assign cluster_id values for DPO/CPO rows.",
     )
@@ -193,7 +199,9 @@ def main() -> None:
     if args.limit:
         dataset = dataset.select(range(min(args.limit, len(dataset))))
     pair_rows = [normalize_row(dict(row)) for row in dataset]
-    if args.cluster_mode in {"random4", "random4_matched"}:
+    if args.cluster_mode == "single_cluster":
+        pair_rows = assign_single_cluster(pair_rows)
+    elif args.cluster_mode in {"random4", "random4_matched"}:
         pair_rows = assign_random_clusters(
             pair_rows,
             seed=args.seed,

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.data.prepare_ultrafeedback import assign_random_clusters, build_outputs, split_by_prompt
+from scripts.data.prepare_ultrafeedback import (
+    assign_random_clusters,
+    assign_single_cluster,
+    build_outputs,
+    split_by_prompt,
+)
 
 
 def pair_row(prompt_id: str) -> dict[str, str]:
@@ -95,3 +100,12 @@ def test_assign_random_clusters_matched_preserves_cluster_distribution() -> None
         clustered_counts[row["cluster_id"]] = clustered_counts.get(row["cluster_id"], 0) + 1
     assert clustered_counts == original_counts
     assert {row["prompt_id"] for row in clustered} == {row["prompt_id"] for row in rows}
+
+
+def test_assign_single_cluster_collapses_all_rows() -> None:
+    rows = [pair_row("p0"), pair_row("p1")]
+
+    clustered = assign_single_cluster(rows)
+
+    assert {row["cluster_id"] for row in clustered} == {"global"}
+    assert {row["prompt_id"] for row in clustered} == {"p0", "p1"}
