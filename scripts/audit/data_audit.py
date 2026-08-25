@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from cpo_trl.data.datasets import load_jsonl
 from cpo_trl.sampling.pair_sampler import CPOPairAwareBatchSampler
