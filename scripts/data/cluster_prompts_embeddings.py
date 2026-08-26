@@ -506,6 +506,14 @@ def main() -> None:
         output_path=args.output_dir / "pca_clusters_3d.html",
     )
     write_interactive_3d_html(
+        pca_xyz,
+        labels,
+        prompts,
+        prompt_ids,
+        title="3D Prompt Embedding Clusters",
+        output_path=args.output_dir / "embedding_clusters_3d.html",
+    )
+    write_interactive_3d_html(
         tsne_xyz,
         labels,
         prompts,
