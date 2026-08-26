@@ -1,0 +1,14 @@
+{
+  "input_jsonl": "data/processed_embedding4/dpo/train.jsonl",
+  "rows": 48906,
+  "prompts": 48900,
+  "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+  "n_clusters": 4,
+  "seed": 42,
+  "cluster_counts": {
+    "embedding_0": 19015,
+    "embedding_1": 14574,
+    "embedding_2": 10321,
+    "embedding_3": 4990
+  }
+}
