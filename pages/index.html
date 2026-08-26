@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CPO — Visualisations de clusters</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      padding: 48px 24px;
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin: 0 0 8px;
+    }
+    p {
+      color: #475569;
+      margin: 0 0 16px;
+    }
+    .links {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    a.card {
+      display: block;
+      padding: 20px 28px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      text-decoration: none;
+      color: #0f172a;
+      font-weight: 600;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      transition: box-shadow 0.15s ease, transform 0.15s ease;
+    }
+    a.card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      transform: translateY(-1px);
+    }
+    a.card span {
+      display: block;
+      font-weight: 400;
+      font-size: 0.85rem;
+      color: #64748b;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div>
+    <h1>Visualisations des clusters de prompts</h1>
+    <p>Réduction de dimension sur les embeddings de prompts (CPO)</p>
+  </div>
+  <div class="links">
+    <a class="card" href="pca_clusters_3d.html">PCA (3D)<span>Analyse en composantes principales</span></a>
+    <a class="card" href="tsne_clusters_3d.html">t-SNE (3D)<span>t-distributed Stochastic Neighbor Embedding</span></a>
+  </div>
+</body>
+</html>
