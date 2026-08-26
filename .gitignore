@@ -33,6 +33,7 @@ dist/
 *~
 
 # Large/local artifacts
+cpo-alignment-talk-src.zip
 outputs/**
 !outputs/**/
 !outputs/**/.gitkeep
@@ -50,4 +51,5 @@ models/
 wandb/
 mlruns/
 tensorboard/
+docs/
 *.log
