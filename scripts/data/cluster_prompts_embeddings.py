@@ -5,7 +5,7 @@ import csv
 import html as html_lib
 import json
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -394,6 +394,29 @@ def write_interactive_3d_html(
     output_path.write_text(html, encoding="utf-8")
 
 
+def write_cluster_jsonl_outputs(rows: list[dict[str, Any]], output_dir: Path) -> dict[str, str]:
+    clustered_path = output_dir / "all_clusters.jsonl"
+    split_dir = output_dir / "cluster_jsonl"
+    split_dir.mkdir(parents=True, exist_ok=True)
+
+    write_jsonl(clustered_path, rows)
+    rows_by_cluster: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        rows_by_cluster[str(row["cluster_id"])].append(row)
+
+    split_paths = {}
+    for cluster_id, cluster_rows in sorted(rows_by_cluster.items()):
+        cluster_path = split_dir / f"{cluster_id}.jsonl"
+        write_jsonl(cluster_path, cluster_rows)
+        split_paths[cluster_id] = str(cluster_path)
+
+    return {
+        "all_clusters": str(clustered_path),
+        "split_dir": str(split_dir),
+        **{f"cluster_{cluster_id}": path for cluster_id, path in split_paths.items()},
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Cluster prompts with embeddings and visualize in 2D.")
     parser.add_argument("--input-jsonl", type=Path, default=Path("data/processed/dpo/train.jsonl"))
@@ -447,6 +470,7 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     if args.output_jsonl is not None:
         write_jsonl(args.output_jsonl, clustered_rows)
+    jsonl_outputs = write_cluster_jsonl_outputs(clustered_rows, args.output_dir)
 
     cluster_counts = dict(sorted(Counter(labels).items()))
     (args.output_dir / "cluster_counts.json").write_text(
@@ -554,7 +578,16 @@ def main() -> None:
                 }
             )
 
-    print(json.dumps({"cluster_counts": cluster_counts, "output_dir": str(args.output_dir)}, indent=2))
+    print(
+        json.dumps(
+            {
+                "cluster_counts": cluster_counts,
+                "output_dir": str(args.output_dir),
+                "jsonl_outputs": jsonl_outputs,
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
