@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from scripts.data.prepare_ultrafeedback import (
+    assign_embedding_clusters,
     assign_random_clusters,
     assign_single_cluster,
     build_outputs,
@@ -109,3 +110,30 @@ def test_assign_single_cluster_collapses_all_rows() -> None:
 
     assert {row["cluster_id"] for row in clustered} == {"global"}
     assert {row["prompt_id"] for row in clustered} == {"p0", "p1"}
+
+
+def test_assign_embedding_clusters_is_prompt_stable() -> None:
+    pytest.importorskip("sklearn")
+
+    class FakeEmbedder:
+        def encode(self, sentences, **_kwargs):
+            return [
+                [0.0, 0.0] if sentence.endswith(("p0", "p1")) else [10.0, 10.0]
+                for sentence in sentences
+            ]
+
+    rows = [pair_row("p0"), pair_row("p0"), pair_row("p1"), pair_row("p2"), pair_row("p3")]
+
+    clustered = assign_embedding_clusters(
+        rows,
+        seed=0,
+        n_clusters=2,
+        prefix="e",
+        embedder=FakeEmbedder(),
+    )
+
+    by_prompt = {}
+    for row in clustered:
+        by_prompt.setdefault(row["prompt_id"], set()).add(row["cluster_id"])
+    assert all(len(cluster_ids) == 1 for cluster_ids in by_prompt.values())
+    assert {row["cluster_id"] for row in clustered} == {"e_0", "e_1"}

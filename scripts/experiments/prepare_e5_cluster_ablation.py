@@ -7,6 +7,7 @@ from pathlib import Path
 
 CONDITIONS = (
     ("semantic_4", "keyword", "Meaningful keyword clusters: coding/math/writing/general."),
+    ("embedding_4", "embedding4", "Four prompt embedding clusters from sentence-transformer KMeans."),
     ("random_4", "random4", "Four prompt-stable random clusters with balanced sizes."),
     ("random_4_matched", "random4_matched", "Randomized prompt membership preserving semantic cluster sizes."),
     ("single_cluster", "single_cluster", "All prompts share one global z reference."),

@@ -18,11 +18,14 @@ def test_prepare_e5_writes_cluster_ablation_manifest(tmp_path) -> None:
 
     assert {record["condition"] for record in records} == {
         "semantic_4",
+        "embedding_4",
         "random_4",
         "random_4_matched",
         "single_cluster",
         "alternative_clusters",
     }
+    embedding_4 = next(record for record in records if record["condition"] == "embedding_4")
+    assert embedding_4["cluster_mode"] == "embedding4"
     random_4 = next(record for record in records if record["condition"] == "random_4")
     assert random_4["cluster_mode"] == "random4"
     assert "--limit" in random_4["data_command"]

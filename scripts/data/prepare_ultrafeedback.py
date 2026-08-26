@@ -6,9 +6,7 @@ import random
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Any
-
-from datasets import load_dataset
+from typing import Any, Protocol
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
@@ -94,6 +92,71 @@ def assign_single_cluster(pair_rows: list[dict[str, str]], *, cluster_id: str = 
     """Assign every prompt to one global cluster for cluster-ablation controls."""
 
     return [{**row, "cluster_id": cluster_id} for row in pair_rows]
+
+
+class PromptEmbedder(Protocol):
+    def encode(
+        self,
+        sentences: list[str],
+        *,
+        batch_size: int = 32,
+        normalize_embeddings: bool = False,
+        show_progress_bar: bool = False,
+    ) -> Any: ...
+
+
+def assign_embedding_clusters(
+    pair_rows: list[dict[str, str]],
+    *,
+    seed: int,
+    n_clusters: int = 4,
+    model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+    batch_size: int = 64,
+    prefix: str = "embedding",
+    embedder: PromptEmbedder | None = None,
+) -> list[dict[str, str]]:
+    """Cluster unique prompts using sentence embeddings and KMeans."""
+
+    if n_clusters < 1:
+        raise ValueError("n_clusters must be >= 1")
+    prompt_texts = {
+        row["prompt_id"]: row["instruction"]
+        for row in sorted(pair_rows, key=lambda row: row["prompt_id"])
+    }
+    if len(prompt_texts) < n_clusters:
+        raise ValueError("n_clusters cannot exceed the number of unique prompts")
+
+    prompt_ids = list(prompt_texts)
+    texts = [prompt_texts[prompt_id] for prompt_id in prompt_ids]
+    if embedder is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise RuntimeError(
+                "embedding4 clustering requires sentence-transformers. "
+                "Install it with `poetry add sentence-transformers scikit-learn`."
+            ) from exc
+        embedder = SentenceTransformer(model_name)
+    embeddings = embedder.encode(
+        texts,
+        batch_size=batch_size,
+        normalize_embeddings=True,
+        show_progress_bar=True,
+    )
+
+    try:
+        from sklearn.cluster import KMeans
+    except ImportError as exc:
+        raise RuntimeError(
+            "embedding4 clustering requires scikit-learn. "
+            "Install it with `poetry add sentence-transformers scikit-learn`."
+        ) from exc
+    labels = KMeans(n_clusters=n_clusters, random_state=seed, n_init="auto").fit_predict(embeddings)
+    prompt_clusters = {
+        prompt_id: f"{prefix}_{label}"
+        for prompt_id, label in zip(prompt_ids, labels, strict=True)
+    }
+    return [{**row, "cluster_id": prompt_clusters[row["prompt_id"]]} for row in pair_rows]
 
 
 def split_by_prompt(
@@ -187,7 +250,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--cluster-mode",
-        choices=("keyword", "single_cluster", "random4", "random4_matched"),
+        choices=("keyword", "single_cluster", "random4", "random4_matched", "embedding4"),
         default="keyword",
         help="How to assign cluster_id values for DPO/CPO rows.",
     )
@@ -198,6 +261,11 @@ def main() -> None:
     )
     parser.add_argument("--output-root", default="data/processed")
     args = parser.parse_args()
+
+    try:
+        from datasets import load_dataset
+    except ImportError as exc:
+        raise RuntimeError("prepare_ultrafeedback.py requires datasets. Install project dependencies first.") from exc
 
     dataset = load_dataset(args.dataset, split=args.split)
     if args.limit:
@@ -213,6 +281,8 @@ def main() -> None:
             prefix=args.random_cluster_prefix,
             matched=args.cluster_mode == "random4_matched",
         )
+    elif args.cluster_mode == "embedding4":
+        pair_rows = assign_embedding_clusters(pair_rows, seed=args.seed, n_clusters=4)
     train_pairs, eval_pairs, test_pairs = split_by_prompt(
         pair_rows,
         eval_ratio=args.eval_ratio,
