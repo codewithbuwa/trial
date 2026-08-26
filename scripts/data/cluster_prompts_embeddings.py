@@ -116,6 +116,7 @@ def write_interactive_3d_html(
         for index, prompt_id in enumerate(prompt_ids)
     ]
     payload = json.dumps({"title": title, "points": points, "colors": colors}, ensure_ascii=True)
+    payload = payload.replace("</", "<\\/")
     html = """<!doctype html>
 <html lang="en">
 <head>

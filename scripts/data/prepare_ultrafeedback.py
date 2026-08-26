@@ -109,7 +109,7 @@ def assign_embedding_clusters(
     pair_rows: list[dict[str, str]],
     *,
     seed: int,
-    n_clusters: int = 4,
+    n_clusters: int = 3,
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
     batch_size: int = 64,
     prefix: str = "embedding",
