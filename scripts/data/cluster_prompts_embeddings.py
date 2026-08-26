@@ -10,7 +10,9 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from cpo_trl.data.datasets import load_jsonl, write_jsonl
 from scripts.data.prepare_ultrafeedback import assign_embedding_clusters
