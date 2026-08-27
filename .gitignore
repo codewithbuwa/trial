@@ -33,6 +33,8 @@ dist/
 *~
 
 # Large/local artifacts
+experiments/E5_cluster_ablation/embedding_4/cluster_jsonl/*
+experiments/E5_cluster_ablation/embedding_4/all_clusters.jsonl
 cpo-alignment-talk-src.zip
 outputs/**
 !outputs/**/
