@@ -5,6 +5,7 @@ on:
     branches: ["main"]
     paths:
       - "pages/**"
+      - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -12,7 +13,6 @@ permissions:
   pages: write
   id-token: write
 
-# Only one deployment at a time; let in-progress runs finish.
 concurrency:
   group: "pages"
   cancel-in-progress: false
