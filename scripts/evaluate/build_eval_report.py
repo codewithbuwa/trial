@@ -379,12 +379,12 @@ def unary_reward_report(paths: dict[str, Path]) -> dict[str, Any]:
 def diagnostic_flags(report: dict[str, Any]) -> list[dict[str, str]]:
     flags: list[dict[str, str]] = []
     for model, files in report["files"].items():
-        if not files["winrate_json"]["exists"]:
+        if not files["pairwise_accuracy_json"]["exists"]:
             flags.append(
                 {
                     "level": "error",
-                    "name": "missing_winrate_json",
-                    "message": f"{model} is missing {files['winrate_json']['path']}",
+                    "name": "missing_pairwise_accuracy_json",
+                    "message": f"{model} is missing {files['pairwise_accuracy_json']['path']}",
                 }
             )
         if not files["margin_jsonl"]["exists"]:
@@ -396,13 +396,13 @@ def diagnostic_flags(report: dict[str, Any]) -> list[dict[str, str]]:
                 }
             )
     for model, metrics in report["model_metrics"].items():
-        winrate = finite_float(metrics.get("normalized_winrate"))
-        if winrate is not None and winrate < 0.5:
+        pairwise_accuracy = finite_float(metrics.get("normalized_pairwise_accuracy"))
+        if pairwise_accuracy is not None and pairwise_accuracy < 0.5:
             flags.append(
                 {
                     "level": "warning",
-                    "name": "normalized_winrate_below_half",
-                    "message": f"{model} normalized_winrate is {winrate:.6f}",
+                    "name": "normalized_pairwise_accuracy_below_half",
+                    "message": f"{model} normalized_pairwise_accuracy is {pairwise_accuracy:.6f}",
                 }
             )
         chosen = finite_float(metrics.get("mean_chosen_length"))
@@ -457,7 +457,7 @@ def diagnostic_flags(report: dict[str, Any]) -> list[dict[str, str]]:
     if report["model_metrics"] and judge_models:
         logprob_best = max(
             report["model_metrics"],
-            key=lambda model: finite_float(report["model_metrics"][model].get("normalized_winrate")) or -1.0,
+            key=lambda model: finite_float(report["model_metrics"][model].get("normalized_pairwise_accuracy")) or -1.0,
         )
         judge_best = max(
             judge_models,
@@ -548,7 +548,7 @@ def build_report(
         },
         "files": {
             model: {
-                "winrate_json": {"path": str(path), "exists": path.exists()},
+                "pairwise_accuracy_json": {"path": str(path), "exists": path.exists()},
                 "margin_jsonl": {
                     "path": str(companion_margins_path(path)),
                     "exists": companion_margins_path(path).exists(),
@@ -583,7 +583,7 @@ def parse_args() -> argparse.Namespace:
         "--result",
         action="append",
         default=[],
-        help="Model result as NAME=path/to/winrate.json. Defaults to output/{sft,dpo,kto,cpo_unary,cpo}/winrate.json.",
+        help="Model result as NAME=path/to/pairwise_accuracy.json. Defaults to output/{sft,dpo,kto,cpo_unary,cpo}/pairwise_accuracy.json.",
     )
     parser.add_argument(
         "--training-dir",
@@ -606,7 +606,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     result_defaults = {
-        name: args.output_root / slug / "winrate.json" for name, slug in DEFAULT_MODELS.items()
+        name: args.output_root / slug / "pairwise_accuracy.json" for name, slug in DEFAULT_MODELS.items()
     }
     training_defaults = {name: args.output_root / slug for name, slug in DEFAULT_MODELS.items()}
     unary_defaults = {

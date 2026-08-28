@@ -34,13 +34,13 @@ def load_runs() -> list[dict]:
         if alpha is None:
             continue
         tm_path = d / "train_metrics.jsonl"
-        wr_path = d / "winrate.json"
+        wr_path = d / "pairwise_accuracy.json"
         if not tm_path.exists():
             continue
         tm = [json.loads(l) for l in tm_path.open() if l.strip()]
         wr = json.load(wr_path.open()) if wr_path.exists() else None
         margins = None
-        wm_path = d / "winrate_margins.jsonl"
+        wm_path = d / "pairwise_accuracy_margins.jsonl"
         if wm_path.exists():
             margins = [json.loads(l) for l in wm_path.open() if l.strip()]
         runs.append({"alpha": alpha, "dir": d, "tm": tm, "wr": wr, "margins": margins})
@@ -72,18 +72,18 @@ def plot_summary_vs_alpha(runs):
     def g(key):
         return [r["wr"].get(key) for r in ev]
 
-    # 1. winrate + reward accuracy vs alpha
+    # 1. pairwise_accuracy + reward accuracy vs alpha
     fig, ax = plt.subplots(figsize=(7, 4.5))
-    ax.plot(a, g("winrate"), "o-", label="winrate")
-    ax.plot(a, g("normalized_winrate"), "s-", label="normalized winrate")
+    ax.plot(a, g("pairwise_accuracy"), "o-", label="pairwise_accuracy")
+    ax.plot(a, g("normalized_pairwise_accuracy"), "s-", label="normalized pairwise accuracy")
     ax.plot(a, g("reward_accuracy"), "^--", label="reward accuracy")
     ax.axhline(0.5, color="gray", ls=":", lw=1)
     ax.set_xlabel("alpha (KTO=0  ->  DPO=1)")
     ax.set_ylabel("rate")
-    ax.set_title("Win/accuracy vs alpha")
+    ax.set_title("Pairwise accuracy/reward accuracy vs alpha")
     ax.legend()
     ax.grid(alpha=0.3)
-    savefig(fig, "A1_winrate_vs_alpha.png")
+    savefig(fig, "A1_pairwise_accuracy_vs_alpha.png")
 
     # 2. margins vs alpha
     fig, ax = plt.subplots(figsize=(7, 4.5))
@@ -125,14 +125,14 @@ def plot_summary_vs_alpha(runs):
 def plot_pareto(runs):
     ev = [r for r in runs if r["wr"]]
     kl = [r["wr"]["sampled_mean_kl"] for r in ev]
-    win = [r["wr"]["normalized_winrate"] for r in ev]
+    pairwise_correct = [r["wr"]["normalized_pairwise_accuracy"] for r in ev]
     a = [r["alpha"] for r in ev]
     fig, ax = plt.subplots(figsize=(7, 5))
-    sc = ax.scatter(kl, win, c=a, cmap="viridis", s=90, zorder=3)
-    for x, y, av in zip(kl, win, a):
+    sc = ax.scatter(kl, pairwise_correct, c=a, cmap="viridis", s=90, zorder=3)
+    for x, y, av in zip(kl, pairwise_correct, a):
         ax.annotate(f"a={av:g}", (x, y), textcoords="offset points", xytext=(6, 4), fontsize=8)
     ax.set_xlabel("sampled KL from reference (drift)")
-    ax.set_ylabel("normalized winrate (quality)")
+    ax.set_ylabel("normalized pairwise accuracy (quality)")
     ax.set_title("Quality vs drift across alpha")
     ax.grid(alpha=0.3)
     fig.colorbar(sc, label="alpha")
@@ -244,8 +244,8 @@ def plot_zk(runs):
     savefig(fig, "D18_zk_final_heatmap.png")
 
 
-# ---------- C15. per-cluster winrate vs alpha ----------
-def plot_cluster_winrate(runs):
+# ---------- C15. per-cluster pairwise_accuracy vs alpha ----------
+def plot_cluster_pairwise_accuracy(runs):
     ev = [r for r in runs if r["margins"]]
     a = [r["alpha"] for r in ev]
     data = {c: [] for c in CLUSTERS}
@@ -254,7 +254,7 @@ def plot_cluster_winrate(runs):
         for row in r["margins"]:
             c = row.get("cluster_id")
             if c in by_c:
-                by_c[c].append(bool(row.get("normalized_win")))
+                by_c[c].append(bool(row.get("normalized_pairwise_correct")))
         for c in CLUSTERS:
             data[c].append(np.mean(by_c[c]) if by_c[c] else np.nan)
     fig, ax = plt.subplots(figsize=(8, 4.5))
@@ -262,11 +262,11 @@ def plot_cluster_winrate(runs):
         ax.plot(a, data[c], "o-", label=c)
     ax.axhline(0.5, color="gray", ls=":", lw=1)
     ax.set_xlabel("alpha")
-    ax.set_ylabel("normalized winrate")
-    ax.set_title("Per-cluster winrate vs alpha")
+    ax.set_ylabel("normalized pairwise accuracy")
+    ax.set_title("Per-cluster pairwise_accuracy vs alpha")
     ax.legend()
     ax.grid(alpha=0.3)
-    savefig(fig, "C15_cluster_winrate_vs_alpha.png")
+    savefig(fig, "C15_cluster_pairwise_accuracy_vs_alpha.png")
 
 
 # ---------- C13/16. margin distributions & length bias ----------
@@ -291,12 +291,12 @@ def plot_margin_distributions(runs):
     savefig(fig, "C13_margin_distributions.png")
 
 
-# Leaderboard: runs ranked by normalized winrate (alpha is the only varied knob)
+# Leaderboard: runs ranked by normalized pairwise accuracy (alpha is the only varied knob)
 def plot_leaderboard(runs):
     ev = [r for r in runs if r["wr"]]
-    ev = sorted(ev, key=lambda r: r["wr"]["normalized_winrate"])  # ascending -> best on top
+    ev = sorted(ev, key=lambda r: r["wr"]["normalized_pairwise_accuracy"])  # ascending -> best on top
     a = [r["alpha"] for r in ev]
-    vals = [r["wr"]["normalized_winrate"] for r in ev]
+    vals = [r["wr"]["normalized_pairwise_accuracy"] for r in ev]
     cmap = plt.get_cmap("viridis")
     amax = max(a) or 1.0
     colors = [cmap(av / amax) for av in a]
@@ -308,12 +308,12 @@ def plot_leaderboard(runs):
     for y, v in zip(ys, vals):
         ax.text(v + 0.0004, y, f"{v:.3f}", va="center", fontsize=8)
     ax.set_xlim(0.5, max(vals) + 0.006)
-    ax.set_xlabel("normalized winrate")
+    ax.set_xlabel("normalized pairwise accuracy")
     ax.set_title("Alpha sweep leaderboard\n(lr=1e-05, β=0.01, gn=0.3, z=token-kl)")
     savefig(fig, "L_leaderboard.png")
 
 
-# Leaderboard by Prometheus judge score (round-robin win fraction per alpha)
+# Leaderboard by Prometheus judge score (round-robin pairwise_correct fraction per alpha)
 def plot_judge_leaderboard():
     summary = BASE / "judge" / "prometheus_summary.json"
     if not summary.exists():
@@ -342,7 +342,7 @@ def plot_judge_leaderboard():
     for y, v in zip(ys, vals):
         ax.text(v + 0.002, y, f"{v:.3f}", va="center", fontsize=8)
     ax.set_xlim(min(0.5, min(vals) - 0.02), max(vals) + 0.03)
-    ax.set_xlabel("Prometheus judge score (round-robin win fraction)")
+    ax.set_xlabel("Prometheus judge score (round-robin pairwise_correct fraction)")
     ncmp = items[0][2] if items else None
     ax.set_title(f"Alpha sweep judge leaderboard\n({d.get('judge_model','judge')}, {ncmp} comparisons/model)")
     savefig(fig, "L_judge_leaderboard.png")
@@ -355,7 +355,7 @@ def main():
     plot_pareto(runs)
     plot_training_curves(runs)
     plot_zk(runs)
-    plot_cluster_winrate(runs)
+    plot_cluster_pairwise_accuracy(runs)
     plot_margin_distributions(runs)
     plot_leaderboard(runs)
     plot_judge_leaderboard()

@@ -111,7 +111,7 @@ def test_write_results_summary_ranks_best_by_method(tmp_path: Path) -> None:
             "status": "ok",
             "normalized_reward_accuracy": 0.51,
             "mean_normalized_reward_margin": 0.01,
-            "normalized_winrate": 0.52,
+            "normalized_pairwise_accuracy": 0.52,
         },
         {
             "method": "dpo",
@@ -119,7 +119,7 @@ def test_write_results_summary_ranks_best_by_method(tmp_path: Path) -> None:
             "status": "ok",
             "normalized_reward_accuracy": 0.54,
             "mean_normalized_reward_margin": 0.005,
-            "normalized_winrate": 0.53,
+            "normalized_pairwise_accuracy": 0.53,
         },
         {
             "method": "cpo",

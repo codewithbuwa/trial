@@ -20,7 +20,7 @@ from cpo_trl.models.peft import load_causal_lm_for_training
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluate preference winrate on chosen/rejected pairs.")
+    parser = argparse.ArgumentParser(description="Evaluate preference pairwise accuracy on chosen/rejected pairs.")
     parser.add_argument("--eval-file", type=Path, required=True)
     parser.add_argument("--model-name-or-path", required=True)
     parser.add_argument("--max-seq-length", type=int, default=512)
@@ -38,7 +38,7 @@ def main() -> None:
     rows = load_jsonl(args.eval_file)
     if not rows or "chosen" not in rows[0] or "rejected" not in rows[0]:
         raise ValueError(
-            "winrate evaluation requires chosen/rejected pair rows. "
+            "pairwise_accuracy evaluation requires chosen/rejected pair rows. "
             "Use data/processed/dpo/validation.jsonl after running prepare_ultrafeedback.py."
         )
     rows = validate_rows(rows, "dpo")
@@ -71,16 +71,16 @@ def main() -> None:
     )
 
     total = 0
-    wins = 0
+    pairwise_correct = 0
     ties = 0
     margin_sum = 0.0
-    normalized_wins = 0
+    normalized_pairwise_correct = 0
     normalized_ties = 0
     normalized_margin_sum = 0.0
-    reward_wins = 0
+    reward_correct = 0
     reward_ties = 0
     reward_margin_sum = 0.0
-    normalized_reward_wins = 0
+    normalized_reward_correct = 0
     normalized_reward_ties = 0
     normalized_reward_margin_sum = 0.0
     chosen_sampled_kl_sum = 0.0
@@ -93,16 +93,16 @@ def main() -> None:
     cluster_stats: dict[str, dict[str, float]] = defaultdict(
         lambda: {
             "total": 0,
-            "wins": 0,
+            "pairwise_correct": 0,
             "ties": 0,
             "margin_sum": 0.0,
-            "normalized_wins": 0,
+            "normalized_pairwise_correct": 0,
             "normalized_ties": 0,
             "normalized_margin_sum": 0.0,
-            "reward_wins": 0,
+            "reward_correct": 0,
             "reward_ties": 0,
             "reward_margin_sum": 0.0,
-            "normalized_reward_wins": 0,
+            "normalized_reward_correct": 0,
             "normalized_reward_ties": 0,
             "normalized_reward_margin_sum": 0.0,
             "chosen_sampled_kl_sum": 0.0,
@@ -135,9 +135,9 @@ def main() -> None:
             normalized_chosen = chosen / chosen_counts
             normalized_rejected = rejected / rejected_counts
             normalized_margins = normalized_chosen - normalized_rejected
-            batch_wins = margins > 0
+            batch_pairwise_correct = margins > 0
             batch_ties = margins == 0
-            batch_normalized_wins = normalized_margins > 0
+            batch_normalized_pairwise_correct = normalized_margins > 0
             batch_normalized_ties = normalized_margins == 0
             reward_margins = None
             normalized_reward_margins = None
@@ -149,9 +149,9 @@ def main() -> None:
             rejected_sampled_kl = None
             normalized_chosen_sampled_kl = None
             normalized_rejected_sampled_kl = None
-            batch_reward_wins = None
+            batch_reward_correct = None
             batch_reward_ties = None
-            batch_normalized_reward_wins = None
+            batch_normalized_reward_correct = None
             batch_normalized_reward_ties = None
             if ref_model is not None:
                 ref_chosen, _ref_chosen_counts = sequence_logp_sums_and_counts(
@@ -186,14 +186,14 @@ def main() -> None:
                         beta=args.beta,
                     )
                 )
-                batch_reward_wins = reward_margins > 0
+                batch_reward_correct = reward_margins > 0
                 batch_reward_ties = reward_margins == 0
-                batch_normalized_reward_wins = normalized_reward_margins > 0
+                batch_normalized_reward_correct = normalized_reward_margins > 0
                 batch_normalized_reward_ties = normalized_reward_margins == 0
-                reward_wins += int(batch_reward_wins.sum().item())
+                reward_correct += int(batch_reward_correct.sum().item())
                 reward_ties += int(batch_reward_ties.sum().item())
                 reward_margin_sum += float(reward_margins.sum().item())
-                normalized_reward_wins += int(batch_normalized_reward_wins.sum().item())
+                normalized_reward_correct += int(batch_normalized_reward_correct.sum().item())
                 normalized_reward_ties += int(batch_normalized_reward_ties.sum().item())
                 normalized_reward_margin_sum += float(normalized_reward_margins.sum().item())
                 chosen_sampled_kl_sum += float(chosen_sampled_kl.sum().item())
@@ -201,10 +201,10 @@ def main() -> None:
                 normalized_chosen_sampled_kl_sum += float(normalized_chosen_sampled_kl.sum().item())
                 normalized_rejected_sampled_kl_sum += float(normalized_rejected_sampled_kl.sum().item())
             total += margins.numel()
-            wins += int(batch_wins.sum().item())
+            pairwise_correct += int(batch_pairwise_correct.sum().item())
             ties += int(batch_ties.sum().item())
             margin_sum += float(margins.sum().item())
-            normalized_wins += int(batch_normalized_wins.sum().item())
+            normalized_pairwise_correct += int(batch_normalized_pairwise_correct.sum().item())
             normalized_ties += int(batch_normalized_ties.sum().item())
             normalized_margin_sum += float(normalized_margins.sum().item())
             chosen_length_sum += int(chosen_counts.sum().item())
@@ -217,9 +217,9 @@ def main() -> None:
                 normalized_margin,
                 chosen_length,
                 rejected_length,
-                win,
+                pairwise_correct_flag,
                 tie,
-                normalized_win,
+                normalized_pairwise_correct_flag,
                 normalized_tie,
                 reward_margin,
                 normalized_reward_margin,
@@ -227,9 +227,9 @@ def main() -> None:
                 rejected_reward,
                 normalized_chosen_reward,
                 normalized_rejected_reward,
-                reward_win,
+                reward_correct_flag,
                 reward_tie,
-                normalized_reward_win,
+                normalized_reward_correct_flag,
                 normalized_reward_tie,
                 chosen_kl,
                 rejected_kl,
@@ -243,9 +243,9 @@ def main() -> None:
                 normalized_margins.detach().cpu().tolist(),
                 chosen_counts.detach().cpu().tolist(),
                 rejected_counts.detach().cpu().tolist(),
-                batch_wins.detach().cpu().tolist(),
+                batch_pairwise_correct.detach().cpu().tolist(),
                 batch_ties.detach().cpu().tolist(),
-                batch_normalized_wins.detach().cpu().tolist(),
+                batch_normalized_pairwise_correct.detach().cpu().tolist(),
                 batch_normalized_ties.detach().cpu().tolist(),
                 (
                     reward_margins.detach().cpu().tolist()
@@ -278,8 +278,8 @@ def main() -> None:
                     else [None] * margins.numel()
                 ),
                 (
-                    batch_reward_wins.detach().cpu().tolist()
-                    if batch_reward_wins is not None
+                    batch_reward_correct.detach().cpu().tolist()
+                    if batch_reward_correct is not None
                     else [None] * margins.numel()
                 ),
                 (
@@ -288,8 +288,8 @@ def main() -> None:
                     else [None] * margins.numel()
                 ),
                 (
-                    batch_normalized_reward_wins.detach().cpu().tolist()
-                    if batch_normalized_reward_wins is not None
+                    batch_normalized_reward_correct.detach().cpu().tolist()
+                    if batch_normalized_reward_correct is not None
                     else [None] * margins.numel()
                 ),
                 (
@@ -321,17 +321,17 @@ def main() -> None:
             ):
                 stats = cluster_stats[cluster_id]
                 stats["total"] += 1
-                stats["wins"] += int(win)
+                stats["pairwise_correct"] += int(pairwise_correct_flag)
                 stats["ties"] += int(tie)
                 stats["margin_sum"] += float(margin)
-                stats["normalized_wins"] += int(normalized_win)
+                stats["normalized_pairwise_correct"] += int(normalized_pairwise_correct_flag)
                 stats["normalized_ties"] += int(normalized_tie)
                 stats["normalized_margin_sum"] += float(normalized_margin)
                 if reward_margin is not None:
-                    stats["reward_wins"] += int(reward_win)
+                    stats["reward_correct"] += int(reward_correct_flag)
                     stats["reward_ties"] += int(reward_tie)
                     stats["reward_margin_sum"] += float(reward_margin)
-                    stats["normalized_reward_wins"] += int(normalized_reward_win)
+                    stats["normalized_reward_correct"] += int(normalized_reward_correct_flag)
                     stats["normalized_reward_ties"] += int(normalized_reward_tie)
                     stats["normalized_reward_margin_sum"] += float(normalized_reward_margin)
                     stats["chosen_sampled_kl_sum"] += float(chosen_kl)
@@ -348,9 +348,9 @@ def main() -> None:
                     "normalized_margin": float(normalized_margin),
                     "chosen_length": int(chosen_length),
                     "rejected_length": int(rejected_length),
-                    "win": bool(win),
+                    "pairwise_correct": bool(pairwise_correct_flag),
                     "tie": bool(tie),
-                    "normalized_win": bool(normalized_win),
+                    "normalized_pairwise_correct": bool(normalized_pairwise_correct_flag),
                     "normalized_tie": bool(normalized_tie),
                 }
                 if reward_margin is not None:
@@ -359,12 +359,12 @@ def main() -> None:
                             "chosen_reward": float(chosen_reward),
                             "rejected_reward": float(rejected_reward),
                             "reward_margin": float(reward_margin),
-                            "reward_win": bool(reward_win),
+                            "reward_correct": bool(reward_correct_flag),
                             "reward_tie": bool(reward_tie),
                             "normalized_chosen_reward": float(normalized_chosen_reward),
                             "normalized_rejected_reward": float(normalized_rejected_reward),
                             "normalized_reward_margin": float(normalized_reward_margin),
-                            "normalized_reward_win": bool(normalized_reward_win),
+                            "normalized_reward_correct": bool(normalized_reward_correct_flag),
                             "normalized_reward_tie": bool(normalized_reward_tie),
                             "chosen_eval_logratio": float(chosen_kl),
                             "rejected_eval_logratio": float(rejected_kl),
@@ -412,23 +412,23 @@ def main() -> None:
         "beta": args.beta,
         "eval_file": str(args.eval_file),
         "total": total,
-        "wins": wins,
+        "pairwise_correct": pairwise_correct,
         "ties": ties,
-        "losses": total - wins - ties,
-        "winrate": wins / total if total else 0.0,
+        "pairwise_incorrect": total - pairwise_correct - ties,
+        "pairwise_accuracy": pairwise_correct / total if total else 0.0,
         "tie_rate": ties / total if total else 0.0,
         "mean_margin": margin_sum / total if total else 0.0,
-        "normalized_wins": normalized_wins,
+        "normalized_pairwise_correct": normalized_pairwise_correct,
         "normalized_ties": normalized_ties,
-        "normalized_losses": total - normalized_wins - normalized_ties,
-        "normalized_winrate": normalized_wins / total if total else 0.0,
+        "normalized_pairwise_incorrect": total - normalized_pairwise_correct - normalized_ties,
+        "normalized_pairwise_accuracy": normalized_pairwise_correct / total if total else 0.0,
         "normalized_tie_rate": normalized_ties / total if total else 0.0,
         "mean_normalized_margin": normalized_margin_sum / total if total else 0.0,
-        "reward_accuracy": reward_wins / total if total and ref_model is not None else None,
+        "reward_accuracy": reward_correct / total if total and ref_model is not None else None,
         "reward_tie_rate": reward_ties / total if total and ref_model is not None else None,
         "mean_reward_margin": reward_margin_sum / total if total and ref_model is not None else None,
         "normalized_reward_accuracy": (
-            normalized_reward_wins / total if total and ref_model is not None else None
+            normalized_reward_correct / total if total and ref_model is not None else None
         ),
         "normalized_reward_tie_rate": (
             normalized_reward_ties / total if total and ref_model is not None else None
@@ -454,18 +454,18 @@ def main() -> None:
         "clusters": {
             cluster_id: {
                 "total": int(stats["total"]),
-                "wins": int(stats["wins"]),
+                "pairwise_correct": int(stats["pairwise_correct"]),
                 "ties": int(stats["ties"]),
-                "losses": int(stats["total"] - stats["wins"] - stats["ties"]),
-                "winrate": stats["wins"] / stats["total"] if stats["total"] else 0.0,
+                "pairwise_incorrect": int(stats["total"] - stats["pairwise_correct"] - stats["ties"]),
+                "pairwise_accuracy": stats["pairwise_correct"] / stats["total"] if stats["total"] else 0.0,
                 "mean_margin": stats["margin_sum"] / stats["total"] if stats["total"] else 0.0,
-                "normalized_wins": int(stats["normalized_wins"]),
+                "normalized_pairwise_correct": int(stats["normalized_pairwise_correct"]),
                 "normalized_ties": int(stats["normalized_ties"]),
-                "normalized_losses": int(
-                    stats["total"] - stats["normalized_wins"] - stats["normalized_ties"]
+                "normalized_pairwise_incorrect": int(
+                    stats["total"] - stats["normalized_pairwise_correct"] - stats["normalized_ties"]
                 ),
-                "normalized_winrate": (
-                    stats["normalized_wins"] / stats["total"] if stats["total"] else 0.0
+                "normalized_pairwise_accuracy": (
+                    stats["normalized_pairwise_correct"] / stats["total"] if stats["total"] else 0.0
                 ),
                 "normalized_tie_rate": (
                     stats["normalized_ties"] / stats["total"] if stats["total"] else 0.0
@@ -474,7 +474,7 @@ def main() -> None:
                     stats["normalized_margin_sum"] / stats["total"] if stats["total"] else 0.0
                 ),
                 "reward_accuracy": (
-                    stats["reward_wins"] / stats["total"]
+                    stats["reward_correct"] / stats["total"]
                     if stats["total"] and ref_model is not None
                     else None
                 ),
@@ -489,7 +489,7 @@ def main() -> None:
                     else None
                 ),
                 "normalized_reward_accuracy": (
-                    stats["normalized_reward_wins"] / stats["total"]
+                    stats["normalized_reward_correct"] / stats["total"]
                     if stats["total"] and ref_model is not None
                     else None
                 ),

@@ -64,7 +64,7 @@ def build_commands(args: argparse.Namespace) -> list[list[str]]:
                 "poetry",
                 "run",
                 "python",
-                "scripts/evaluate/evaluate_winrate.py",
+                "scripts/evaluate/evaluate_pairwise_accuracy.py",
                 "--eval-file",
                 str(data_root / "dpo" / args.eval_split),
                 "--model-name-or-path",
@@ -76,7 +76,7 @@ def build_commands(args: argparse.Namespace) -> list[list[str]]:
                 "--batch-size",
                 str(args.batch_size),
                 "--output-json",
-                str(output_root / model / "winrate.json"),
+                str(output_root / model / "pairwise_accuracy.json"),
             ]
         )
     for model in PREFERENCE_MODELS:
@@ -158,7 +158,7 @@ def build_commands(args: argparse.Namespace) -> list[list[str]]:
                     for model in MODELS
                     for value in (
                         "--result",
-                        f"{model.upper()}={output_root / model / 'winrate.json'}",
+                        f"{model.upper()}={output_root / model / 'pairwise_accuracy.json'}",
                     )
                 ],
                 *[
@@ -184,7 +184,7 @@ def build_commands(args: argparse.Namespace) -> list[list[str]]:
                     for model in MODELS
                     for value in (
                         "--result",
-                        f"{model.upper()}={output_root / model / 'winrate.json'}",
+                        f"{model.upper()}={output_root / model / 'pairwise_accuracy.json'}",
                     )
                 ],
                 *[

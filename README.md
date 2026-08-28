@@ -131,7 +131,7 @@ poetry run python scripts/evaluate/evaluate_judge.py \
   --output-jsonl outputs/judge/main_pairwise.jsonl \
   --summary-json outputs/judge/main_summary.json
 
-poetry run python scripts/evaluate/evaluate_winrate.py --help
+poetry run python scripts/evaluate/evaluate_pairwise_accuracy.py --help
 ```
 
 ## Run Manifests

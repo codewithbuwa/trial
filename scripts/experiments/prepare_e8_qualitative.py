@@ -45,9 +45,13 @@ def select_cases(
         unary_rows = unary_by_prompt.get(prompt_id, [])
         if not unary_rows:
             continue
-        cpo_win = bool(cpo_rows[0].get("normalized_win", cpo_rows[0].get("win", False)))
-        unary_win = bool(unary_rows[0].get("normalized_win", unary_rows[0].get("win", False)))
-        if cpo_win != unary_win:
+        cpo_pairwise_correct = bool(
+            cpo_rows[0].get("normalized_pairwise_correct", cpo_rows[0].get("pairwise_correct", False))
+        )
+        unary_pairwise_correct = bool(
+            unary_rows[0].get("normalized_pairwise_correct", unary_rows[0].get("pairwise_correct", False))
+        )
+        if cpo_pairwise_correct != unary_pairwise_correct:
             disagreements.append({"prompt_id": prompt_id, "cpo": cpo_rows[0], "cpo_unary": unary_rows[0]})
     judge_cpo_wins = [
         record
@@ -57,8 +61,12 @@ def select_cases(
     ][:n]
     return {
         "experiment": "E8_qualitative",
-        "cpo_strong_wins": top_margin_cases(cpo_margins, metric="normalized_margin", n=n, reverse=True),
-        "cpo_strong_losses": top_margin_cases(cpo_margins, metric="normalized_margin", n=n, reverse=False),
+        "cpo_strong_pairwise_correct": top_margin_cases(
+            cpo_margins, metric="normalized_margin", n=n, reverse=True
+        ),
+        "cpo_strong_pairwise_incorrect": top_margin_cases(
+            cpo_margins, metric="normalized_margin", n=n, reverse=False
+        ),
         "cpo_vs_cpo_unary_disagreements": disagreements[:n],
         "judge_cpo_wins": judge_cpo_wins,
         "generations_by_prompt": by_prompt(generations),
@@ -67,11 +75,11 @@ def select_cases(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Prepare E8 qualitative case selections.")
-    parser.add_argument("--cpo-margins", type=Path, default=Path("outputs/checkpoints/cpo/winrate_margins.jsonl"))
+    parser.add_argument("--cpo-margins", type=Path, default=Path("outputs/checkpoints/cpo/pairwise_accuracy_margins.jsonl"))
     parser.add_argument(
         "--cpo-unary-margins",
         type=Path,
-        default=Path("outputs/checkpoints/cpo_unary/winrate_margins.jsonl"),
+        default=Path("outputs/checkpoints/cpo_unary/pairwise_accuracy_margins.jsonl"),
     )
     parser.add_argument("--judge-pairwise", type=Path, default=Path("outputs/judge/pairwise.jsonl"))
     parser.add_argument("--generations", type=Path, default=Path("outputs/generations/main.jsonl"))

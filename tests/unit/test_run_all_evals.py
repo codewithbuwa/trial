@@ -27,9 +27,9 @@ def test_build_commands_runs_all_local_eval_steps() -> None:
     commands = build_commands(args)
 
     assert len(commands) == 11
-    winrate_commands = [command for command in commands if "scripts/evaluate/evaluate_winrate.py" in command]
-    assert len(winrate_commands) == 5
-    assert all("--reference-model-name-or-path" in command for command in winrate_commands)
+    pairwise_accuracy_commands = [command for command in commands if "scripts/evaluate/evaluate_pairwise_accuracy.py" in command]
+    assert len(pairwise_accuracy_commands) == 5
+    assert all("--reference-model-name-or-path" in command for command in pairwise_accuracy_commands)
     unary_commands = [command for command in commands if "scripts/evaluate/evaluate_unary_rewards.py" in command]
     assert len(unary_commands) == 3
     judge_command = next(command for command in commands if "scripts/evaluate/evaluate_judge.py" in command)

@@ -75,13 +75,13 @@ def prepare_e9(
                             "poetry",
                             "run",
                             "python",
-                            "scripts/evaluate/evaluate_winrate.py",
+                            "scripts/evaluate/evaluate_pairwise_accuracy.py",
                             "--eval-file",
                             str(data_root / eval_kind / test_split),
                             "--model-name-or-path",
                             config["output_dir"],
                             "--output-json",
-                            str(Path(config["output_dir"]) / "test_winrate.json"),
+                            str(Path(config["output_dir"]) / "test_pairwise_accuracy.json"),
                         ],
                     }
                 )

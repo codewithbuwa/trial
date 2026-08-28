@@ -25,7 +25,7 @@ N = 1000  # teacher-forced eval size
 
 
 def wr(d):
-    return json.load(open(BASE / d / "winrate.json"))
+    return json.load(open(BASE / d / "pairwise_accuracy.json"))
 
 
 def savefig(fig, name):
@@ -39,11 +39,11 @@ def ci95(p, n):
     return 1.96 * math.sqrt(p * (1 - p) / n)
 
 
-# 1. Teacher-forced metrics grouped bars with 95% CI on winrate
+# 1. Teacher-forced metrics grouped bars with 95% CI on pairwise_accuracy
 def plot_teacher_forced():
     data = {label: wr(d) for label, d, _ in MODELS}
     metrics = [
-        ("normalized_winrate", "Norm. winrate"),
+        ("normalized_pairwise_accuracy", "Norm. pairwise accuracy"),
         ("normalized_reward_accuracy", "Norm. reward acc."),
     ]
     fig, ax = plt.subplots(figsize=(8.5, 5))
@@ -120,14 +120,14 @@ def plot_head_to_head():
                 ha="center", va="bottom", fontsize=7, color="dimgray")
     ax.axvline(0, color="black", lw=1)
     ax.set_yticks(y, [f"{a}\nvs {b}" for a, b, *_ in rows], fontsize=8)
-    ax.set_xlabel("← left model wins      |      right model wins →")
+    ax.set_xlabel("← left model preferred      |      right model preferred →")
     ax.set_title("Prometheus head-to-head (200 prompts/pair)\n"
                  "keyword vs random4 = 93–93 (p=1.0); nothing significant")
     ax.set_xlim(-120, 120)
     savefig(fig, "3_head_to_head.png")
 
 
-# 4. Metric disagreement: normalized winrate vs judge score
+# 4. Metric disagreement: normalized pairwise accuracy vs judge score
 def plot_disagreement():
     data = {label: wr(d) for label, d, _ in MODELS}
     j = json.load(open(BASE / "judge" / "prometheus_summary.json"))["models"]
@@ -135,29 +135,29 @@ def plot_disagreement():
            "CPO-unary\nrandom4": "CPO_UNARY_RANDOM4"}
     fig, ax = plt.subplots(figsize=(7, 6))
     for label, d, color in MODELS:
-        x = data[label]["normalized_winrate"]
+        x = data[label]["normalized_pairwise_accuracy"]
         yv = j[key[label]]["judge_score"]
         ax.scatter(x, yv, s=160, color=color, zorder=3)
         ax.annotate(label.replace("\n", " "), (x, yv),
                     textcoords="offset points", xytext=(8, 6), fontsize=9)
     ax.axhline(0.5, color="gray", ls=":", lw=1)
-    ax.set_xlabel("normalized winrate (teacher-forced)")
+    ax.set_xlabel("normalized pairwise accuracy (teacher-forced)")
     ax.set_ylabel("Prometheus judge score")
     ax.set_title("Metric disagreement\n(log-prob best = keyword, judge best = KTO)")
     ax.grid(alpha=0.3)
-    savefig(fig, "4_winrate_vs_judge.png")
+    savefig(fig, "4_pairwise_accuracy_vs_judge.png")
 
 
-# 5. Per-cluster normalized winrate (grouped)
+# 5. Per-cluster normalized pairwise accuracy (grouped)
 def plot_cluster():
     import collections
     clusters = ["coding", "general", "writing", "math"]
     data = {}
     for label, d, _ in MODELS:
-        rows = [json.loads(l) for l in open(BASE / d / "winrate_margins.jsonl")]
+        rows = [json.loads(l) for l in open(BASE / d / "pairwise_accuracy_margins.jsonl")]
         byc = collections.defaultdict(list)
         for r in rows:
-            byc[r.get("cluster_id", "?")].append(bool(r.get("normalized_win")))
+            byc[r.get("cluster_id", "?")].append(bool(r.get("normalized_pairwise_correct")))
         data[label] = {c: (sum(byc[c]) / len(byc[c]) if byc.get(c) else np.nan) for c in clusters}
     fig, ax = plt.subplots(figsize=(9, 5))
     x = np.arange(len(clusters))
@@ -172,11 +172,11 @@ def plot_cluster():
     ax.axhline(0.5, color="gray", ls=":", lw=1)
     ax.set_xticks(x, [f"{c}" for c in clusters])
     ax.set_ylim(0.45, 0.72)
-    ax.set_ylabel("normalized winrate")
-    ax.set_title("Per-cluster normalized winrate (eval clusters shared)\n"
+    ax.set_ylabel("normalized pairwise accuracy")
+    ax.set_title("Per-cluster normalized pairwise accuracy (eval clusters shared)\n"
                  "near-identical across models; math n=29 (noisy)")
     ax.legend()
-    savefig(fig, "5_cluster_winrate.png")
+    savefig(fig, "5_cluster_pairwise_accuracy.png")
 
 
 # 6. Cluster reference z_k (active) + cluster sizes

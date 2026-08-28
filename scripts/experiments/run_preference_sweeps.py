@@ -211,8 +211,8 @@ def write_results_summary(
                 result.get("mean_normalized_reward_margin")
                 if result.get("mean_normalized_reward_margin") is not None
                 else float("-inf"),
-                result.get("normalized_winrate")
-                if result.get("normalized_winrate") is not None
+                result.get("normalized_pairwise_accuracy")
+                if result.get("normalized_pairwise_accuracy") is not None
                 else float("-inf"),
             ),
             reverse=True,
@@ -253,7 +253,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup-steps", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--run", action="store_true", help="Run commands after writing configs.")
-    parser.add_argument("--eval", action="store_true", help="Evaluate each completed run with evaluate_winrate.py.")
+    parser.add_argument("--eval", action="store_true", help="Evaluate each completed run with evaluate_pairwise_accuracy.py.")
     parser.add_argument("--eval-file", type=Path, default=Path("data/processed/dpo/validation.jsonl"))
     parser.add_argument("--eval-batch-size", type=int, default=4)
     parser.add_argument("--eval-limit", type=int)
@@ -298,12 +298,12 @@ def main() -> None:
             write_results_summary(results, args.output_dir, args.score_metric)
             sys.exit(completed.returncode)
         if completed.returncode == 0 and args.eval:
-            eval_path = Path(run["output_dir"]) / "winrate.json"
+            eval_path = Path(run["output_dir"]) / "pairwise_accuracy.json"
             eval_command = [
                 "poetry",
                 "run",
                 "python",
-                "scripts/evaluate/evaluate_winrate.py",
+                "scripts/evaluate/evaluate_pairwise_accuracy.py",
                 "--eval-file",
                 str(args.eval_file),
                 "--model-name-or-path",
@@ -325,8 +325,8 @@ def main() -> None:
             if eval_completed.returncode == 0:
                 metrics = read_json(eval_path)
                 for key in (
-                    "winrate",
-                    "normalized_winrate",
+                    "pairwise_accuracy",
+                    "normalized_pairwise_accuracy",
                     "reward_accuracy",
                     "normalized_reward_accuracy",
                     "mean_margin",

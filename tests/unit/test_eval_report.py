@@ -42,14 +42,14 @@ def test_build_report_aggregates_eval_training_judge_and_flags(tmp_path: Path) -
     sft_dir = output / "sft"
     cpo_dir = output / "cpo"
     write_json(
-        sft_dir / "winrate.json",
+        sft_dir / "pairwise_accuracy.json",
         {
             "model": "output/sft",
             "eval_file": "data/processed/dpo/validation.jsonl",
             "total": 2,
-            "normalized_winrate": 0.4,
+            "normalized_pairwise_accuracy": 0.4,
             "mean_normalized_margin": -0.1,
-            "winrate": 0.5,
+            "pairwise_accuracy": 0.5,
             "mean_margin": -2.0,
             "mean_chosen_length": 10.0,
             "mean_rejected_length": 20.0,
@@ -62,7 +62,7 @@ def test_build_report_aggregates_eval_training_judge_and_flags(tmp_path: Path) -
             "clusters": {
                 "coding": {
                     "total": 2,
-                    "normalized_winrate": 0.4,
+                    "normalized_pairwise_accuracy": 0.4,
                     "mean_normalized_margin": -0.1,
                     "reward_accuracy": 0.5,
                     "mean_reward_margin": 0.1,
@@ -72,7 +72,7 @@ def test_build_report_aggregates_eval_training_judge_and_flags(tmp_path: Path) -
         },
     )
     write_jsonl(
-        sft_dir / "winrate_margins.jsonl",
+        sft_dir / "pairwise_accuracy_margins.jsonl",
         [
             {
                 "cluster_id": "coding",
@@ -109,16 +109,16 @@ def test_build_report_aggregates_eval_training_judge_and_flags(tmp_path: Path) -
         },
     )
     write_json(
-        cpo_dir / "winrate.json",
+        cpo_dir / "pairwise_accuracy.json",
         {
             "model": "output/cpo",
             "total": 2,
-            "normalized_winrate": 0.6,
+            "normalized_pairwise_accuracy": 0.6,
             "mean_normalized_margin": 0.2,
             "clusters": {},
         },
     )
-    write_jsonl(cpo_dir / "winrate_margins.jsonl", [])
+    write_jsonl(cpo_dir / "pairwise_accuracy_margins.jsonl", [])
     write_jsonl(
         cpo_dir / "train_metrics.jsonl",
         [
@@ -150,8 +150,8 @@ def test_build_report_aggregates_eval_training_judge_and_flags(tmp_path: Path) -
 
     report = build_report(
         result_paths={
-            "SFT": sft_dir / "winrate.json",
-            "CPO": cpo_dir / "winrate.json",
+            "SFT": sft_dir / "pairwise_accuracy.json",
+            "CPO": cpo_dir / "pairwise_accuracy.json",
         },
         training_dirs={"SFT": sft_dir, "CPO": cpo_dir},
         unary_reward_paths={"CPO": output / "cpo" / "unary_rewards.json"},
@@ -160,9 +160,9 @@ def test_build_report_aggregates_eval_training_judge_and_flags(tmp_path: Path) -
         output_root=output,
     )
 
-    assert report["model_metrics"]["SFT"]["normalized_winrate"] == 0.4
+    assert report["model_metrics"]["SFT"]["normalized_pairwise_accuracy"] == 0.4
     assert report["model_metrics"]["SFT"]["reward_accuracy"] == 0.5
-    assert report["cluster_metrics"]["coding"]["SFT"]["normalized_winrate"] == 0.4
+    assert report["cluster_metrics"]["coding"]["SFT"]["normalized_pairwise_accuracy"] == 0.4
     assert report["margin_distribution"]["SFT"]["normalized_margin"]["count"] == 2
     assert report["margin_distribution"]["SFT"]["reward_margin"]["mean"] == pytest.approx(0.1)
     assert report["margin_distribution"]["SFT"]["normalized_reward_margin"]["mean"] == pytest.approx(0.01)
@@ -172,7 +172,7 @@ def test_build_report_aggregates_eval_training_judge_and_flags(tmp_path: Path) -
     assert report["training_diagnostics"]["SFT"]["final_loss"] == 1.0
     assert report["training_diagnostics"]["CPO"]["final_diagnostic"]["z_k"] == {"coding": 0.1}
     flag_names = {flag["name"] for flag in report["diagnostic_flags"]}
-    assert "normalized_winrate_below_half" in flag_names
+    assert "normalized_pairwise_accuracy_below_half" in flag_names
     assert "large_length_gap" in flag_names
     assert "cpo_no_pairs" in flag_names
     assert "low_cpo_baseline_ready_rate" in flag_names

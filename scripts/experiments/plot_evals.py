@@ -17,11 +17,11 @@ import matplotlib.pyplot as plt
 
 
 DEFAULT_RESULTS = {
-    "SFT": Path("outputs/checkpoints/sft/winrate.json"),
-    "DPO": Path("outputs/checkpoints/dpo/winrate.json"),
-    "KTO": Path("outputs/checkpoints/kto/winrate.json"),
-    "CPO_UNARY": Path("outputs/checkpoints/cpo_unary/winrate.json"),
-    "CPO": Path("outputs/checkpoints/cpo/winrate.json"),
+    "SFT": Path("outputs/checkpoints/sft/pairwise_accuracy.json"),
+    "DPO": Path("outputs/checkpoints/dpo/pairwise_accuracy.json"),
+    "KTO": Path("outputs/checkpoints/kto/pairwise_accuracy.json"),
+    "CPO_UNARY": Path("outputs/checkpoints/cpo_unary/pairwise_accuracy.json"),
+    "CPO": Path("outputs/checkpoints/cpo/pairwise_accuracy.json"),
 }
 
 
@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
         "--result",
         action="append",
         default=[],
-        help="Model result as NAME=path/to/winrate.json. Defaults to outputs/{sft,dpo,kto,cpo}/winrate.json.",
+        help="Model result as NAME=path/to/pairwise_accuracy.json. Defaults to outputs/{sft,dpo,kto,cpo}/pairwise_accuracy.json.",
     )
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/evals"))
     parser.add_argument(
@@ -62,7 +62,7 @@ def load_results(paths: dict[str, Path]) -> dict[str, dict[str, Any]]:
             results[name] = json.loads(path.read_text(encoding="utf-8"))
     if not results:
         missing = ", ".join(str(path) for path in paths.values())
-        raise FileNotFoundError(f"no winrate JSON files found; looked for: {missing}")
+        raise FileNotFoundError(f"no pairwise_accuracy JSON files found; looked for: {missing}")
     return results
 
 
@@ -116,14 +116,14 @@ def save_bar(labels: list[str], values: list[float], title: str, ylabel: str, pa
     plt.close(fig)
 
 
-def plot_winrate_by_model(results: dict[str, dict[str, Any]], output_dir: Path) -> None:
+def plot_pairwise_accuracy_by_model(results: dict[str, dict[str, Any]], output_dir: Path) -> None:
     labels = list(results)
     save_bar(
         labels,
-        [float(results[name]["winrate"]) for name in labels],
-        "Preference Winrate by Model",
-        "Winrate",
-        output_dir / "winrate_by_model.png",
+        [float(results[name]["pairwise_accuracy"]) for name in labels],
+        "Preference Pairwise Accuracy by Model",
+        "Pairwise Accuracy",
+        output_dir / "pairwise_accuracy_by_model.png",
     )
 
 
@@ -146,7 +146,7 @@ def plot_mean_margin_by_model(results: dict[str, dict[str, Any]], output_dir: Pa
     plt.close(fig)
 
 
-def plot_cluster_winrate(results: dict[str, dict[str, Any]], output_dir: Path) -> None:
+def plot_cluster_pairwise_accuracy(results: dict[str, dict[str, Any]], output_dir: Path) -> None:
     preferred = ["coding", "math", "writing", "general"]
     clusters = [
         cluster
@@ -173,21 +173,21 @@ def plot_cluster_winrate(results: dict[str, dict[str, Any]], output_dir: Path) -
     grouped_bars = []
     for model_index, name in enumerate(labels):
         values = [
-            float(results[name].get("clusters", {}).get(cluster, {}).get("winrate", 0.0))
+            float(results[name].get("clusters", {}).get(cluster, {}).get("pairwise_accuracy", 0.0))
             for cluster in clusters
         ]
         offsets = [position - 0.4 + width / 2 + model_index * width for position in x_positions]
         bars = ax.bar(offsets, values, width=width, label=name, color=colors[model_index % len(colors)])
         grouped_bars.append(bars)
-    ax.set_title("Cluster Winrate by Model")
-    ax.set_ylabel("Winrate")
+    ax.set_title("Cluster Pairwise Accuracy by Model")
+    ax.set_ylabel("Pairwise Accuracy")
     ax.set_xticks(x_positions, clusters)
     ax.set_ylim(0, 1.0)
     for bars in grouped_bars:
         label_bars_inside(ax, bars)
     ax.legend()
     fig.tight_layout()
-    fig.savefig(output_dir / "cluster_winrate_by_model.png", dpi=180)
+    fig.savefig(output_dir / "cluster_pairwise_accuracy_by_model.png", dpi=180)
     plt.close(fig)
 
 
@@ -258,9 +258,9 @@ def main() -> None:
         {name: Path(f"outputs/{name.lower()}") for name in DEFAULT_RESULTS},
     )
     results = load_results(result_paths)
-    plot_winrate_by_model(results, args.output_dir)
+    plot_pairwise_accuracy_by_model(results, args.output_dir)
     plot_mean_margin_by_model(results, args.output_dir)
-    plot_cluster_winrate(results, args.output_dir)
+    plot_cluster_pairwise_accuracy(results, args.output_dir)
     plot_margin_histograms(load_margins(result_paths), args.output_dir)
     losses, reward_margins = load_training_series(training_dirs)
     plot_series(losses, "Training Loss over Steps", "Loss", args.output_dir / "training_loss.png")

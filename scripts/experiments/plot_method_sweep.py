@@ -19,7 +19,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 METHODS = ["kto", "cpo", "dpo"]
 MCOLOR = {"kto": "tab:blue", "cpo": "tab:green", "dpo": "tab:red"}
-PRIMARY = "normalized_winrate"
+PRIMARY = "normalized_pairwise_accuracy"
 
 
 def load():
@@ -52,7 +52,7 @@ def run_label(r):
 # 1. best-by-method grouped bars
 def plot_best_by_method(rows):
     dm = by_method(rows)
-    metrics = ["normalized_winrate", "winrate", "reward_accuracy"]
+    metrics = ["normalized_pairwise_accuracy", "pairwise_accuracy", "reward_accuracy"]
     best = {m: max(dm[m], key=lambda r: r[PRIMARY]) for m in METHODS}
     x = np.arange(len(metrics))
     w = 0.25
@@ -103,7 +103,7 @@ def plot_heatmaps(rows):
                         ax.text(li, bi, f"{mat[bi, li]:.3f}", ha="center", va="center",
                                 fontsize=7, color="white" if mat[bi, li] < (vmin + vmax) / 2 else "black")
     fig.colorbar(im, ax=axes, label=PRIMARY, shrink=0.6, location="right")
-    fig.suptitle("Normalized winrate over lr x beta (faceted by method x grad-norm)")
+    fig.suptitle("Normalized pairwise accuracy over lr x beta (faceted by method x grad-norm)")
     savefig(fig, "2_lr_beta_heatmaps.png", tight=False)
 
 
@@ -119,12 +119,12 @@ def plot_distribution(rows):
     ax.axhline(0.5, color="gray", ls=":", lw=1)
     ax.set_xticks(range(len(METHODS)), [m.upper() for m in METHODS])
     ax.set_ylabel(PRIMARY)
-    ax.set_title("Spread of normalized winrate across the grid (bar = median)")
+    ax.set_title("Spread of normalized pairwise accuracy across the grid (bar = median)")
     ax.grid(alpha=0.3, axis="y")
     savefig(fig, "3_distribution_by_method.png")
 
 
-# 4. winrate vs reward accuracy agreement
+# 4. pairwise_accuracy vs reward accuracy agreement
 def plot_agreement(rows):
     fig, ax = plt.subplots(figsize=(6.5, 6))
     for m in METHODS:
@@ -134,11 +134,11 @@ def plot_agreement(rows):
     ax.axhline(0.5, color="gray", ls=":", lw=1)
     ax.axvline(0.5, color="gray", ls=":", lw=1)
     ax.set_xlabel("reward accuracy (train-side)")
-    ax.set_ylabel("normalized winrate (eval-side)")
+    ax.set_ylabel("normalized pairwise accuracy (eval-side)")
     ax.set_title("Metric agreement across runs")
     ax.legend()
     ax.grid(alpha=0.3)
-    savefig(fig, "4_winrate_vs_reward_accuracy.png")
+    savefig(fig, "4_pairwise_accuracy_vs_reward_accuracy.png")
 
 
 # 5. quality vs drift
@@ -149,7 +149,7 @@ def plot_quality_vs_drift(rows):
         ax.scatter([r["sampled_mean_kl"] for r in rs], [r[PRIMARY] for r in rs],
                    color=MCOLOR[m], label=m.upper(), alpha=0.75, s=35)
     ax.set_xlabel("sampled mean KL (signed drift from reference)")
-    ax.set_ylabel("normalized winrate")
+    ax.set_ylabel("normalized pairwise accuracy")
     ax.set_title("Quality vs drift across runs")
     ax.legend()
     ax.grid(alpha=0.3)
