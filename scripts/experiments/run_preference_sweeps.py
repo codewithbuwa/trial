@@ -120,6 +120,8 @@ def build_sweep_configs(args: argparse.Namespace) -> list[dict[str, Any]]:
                 "seed": args.seed,
                 "use_lora": True,
             }
+            if args.terminal_log_steps is not None:
+                config["terminal_log_steps"] = args.terminal_log_steps
             if args.warmup_steps is not None:
                 config["warmup_steps"] = args.warmup_steps
                 config["warmup_ratio"] = 0.0
@@ -248,6 +250,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--per-device-train-batch-size", type=int, default=4)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=2)
     parser.add_argument("--logging-steps", type=int, default=5)
+    parser.add_argument(
+        "--terminal-log-steps",
+        type=int,
+        help="Print training logs to the terminal at this interval while keeping --logging-steps for metric collection.",
+    )
     parser.add_argument("--save-steps", type=int, default=500)
     parser.add_argument("--save-total-limit", type=int, default=1)
     parser.add_argument("--warmup-steps", type=int, default=10)

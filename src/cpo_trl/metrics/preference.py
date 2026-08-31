@@ -114,3 +114,24 @@ class GroupedPreferenceMetricsCallback(TrainerCallback):
         )
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+class SparseTrainingPrinterCallback(TrainerCallback):
+    """Print Trainer log records only every N optimizer steps."""
+
+    def __init__(self, *, every_n_steps: int) -> None:
+        if every_n_steps <= 0:
+            raise ValueError("every_n_steps must be positive")
+        self.every_n_steps = every_n_steps
+
+    def on_log(self, args, state, control, logs=None, **kwargs):  # type: ignore[no-untyped-def]
+        del args, control, kwargs
+        if logs is None:
+            return
+        global_step = int(getattr(state, "global_step", 0))
+        if global_step <= 0 or global_step % self.every_n_steps != 0:
+            return
+        printable = dict(logs)
+        printable.pop("total_flos", None)
+        printable["step"] = global_step
+        print(printable, flush=True)

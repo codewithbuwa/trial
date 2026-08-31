@@ -232,6 +232,8 @@ def main() -> None:
         args.cluster_sampling = "proportional"
     if not hasattr(args, "resume_from_checkpoint"):
         args.resume_from_checkpoint = None
+    if not hasattr(args, "terminal_log_steps"):
+        args.terminal_log_steps = args.logging_steps
     write_run_manifest(
         args.output_dir,
         method="cpo",
@@ -600,7 +602,8 @@ def main() -> None:
                             "resume_from_checkpoint": str(resume_checkpoint) if resume_checkpoint else None,
                         },
                     }
-                    print(record)
+                    if global_step % args.terminal_log_steps == 0:
+                        print(record)
                     write_jsonl_record(metrics_path, record)
                     write_jsonl_record(grouped_metrics_path, grouped_record)
                 if global_step % args.save_steps == 0:

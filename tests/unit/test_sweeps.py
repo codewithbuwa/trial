@@ -59,6 +59,7 @@ def test_build_sweep_configs_adds_cpo_alpha_only(tmp_path: Path) -> None:
         per_device_train_batch_size=4,
         gradient_accumulation_steps=2,
         logging_steps=5,
+        terminal_log_steps=None,
         save_steps=500,
         save_total_limit=1,
         warmup_steps=10,
@@ -77,6 +78,43 @@ def test_build_sweep_configs_adds_cpo_alpha_only(tmp_path: Path) -> None:
     assert {run["z_baseline"] for run in cpo_runs} == {"token_kl"}
     assert all(f"scripts/train/train_{run['method']}.py" in run["command"] for run in runs)
     assert all(run["config"]["weight_decay"] == 0.123 for run in runs)
+    assert all("terminal_log_steps" not in run["config"] for run in runs)
+
+
+def test_build_sweep_configs_can_set_sparse_terminal_logging(tmp_path: Path) -> None:
+    config_dir = tmp_path / "configs"
+    (config_dir / "base").mkdir(parents=True)
+    write_config(config_dir / "kto" / "kto_controlled.yaml", "kto")
+    args = argparse.Namespace(
+        methods=["kto"],
+        config_dir=config_dir,
+        train_root=Path("data/processed"),
+        split="train.jsonl",
+        model_name_or_path="Qwen/Qwen2.5-1.5B-Instruct",
+        output_dir=tmp_path / "sweeps",
+        learning_rates=[1e-5],
+        betas=[0.01],
+        alphas=None,
+        max_grad_norms=[0.3],
+        weight_decay=None,
+        z_baselines=None,
+        num_train_epochs=1.0,
+        max_seq_length=512,
+        per_device_train_batch_size=4,
+        gradient_accumulation_steps=4,
+        logging_steps=5,
+        terminal_log_steps=500,
+        save_steps=500,
+        save_total_limit=1,
+        warmup_steps=10,
+        seed=42,
+    )
+
+    runs = build_sweep_configs(args)
+
+    assert len(runs) == 1
+    assert runs[0]["config"]["logging_steps"] == 5
+    assert runs[0]["config"]["terminal_log_steps"] == 500
 
 
 def test_write_sweep_creates_manifest_and_configs(tmp_path: Path) -> None:

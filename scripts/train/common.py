@@ -21,6 +21,7 @@ DEFAULTS: dict[str, Any] = {
     "warmup_steps": 0,
     "num_train_epochs": 1.0,
     "logging_steps": 10,
+    "terminal_log_steps": None,
     "save_steps": 500,
     "save_total_limit": 1,
     "seed": 42,
@@ -67,6 +68,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--warmup-steps", type=int, default=argparse.SUPPRESS)
     parser.add_argument("--num-train-epochs", type=float, default=argparse.SUPPRESS)
     parser.add_argument("--logging-steps", type=int, default=argparse.SUPPRESS)
+    parser.add_argument("--terminal-log-steps", type=int, default=argparse.SUPPRESS)
     parser.add_argument("--save-steps", type=int, default=argparse.SUPPRESS)
     parser.add_argument("--save-total-limit", type=int, default=argparse.SUPPRESS)
     parser.add_argument("--seed", type=int, default=argparse.SUPPRESS)

@@ -8,7 +8,7 @@ from transformers import AutoTokenizer
 from cpo_trl.data.datasets import load_training_rows
 from cpo_trl.utils.finite import FiniteTrainingCallback
 from cpo_trl.data.formatting import format_preference_row
-from cpo_trl.metrics.preference import GroupedPreferenceMetricsCallback
+from cpo_trl.metrics.preference import GroupedPreferenceMetricsCallback, SparseTrainingPrinterCallback
 from cpo_trl.models.peft import (
     load_causal_lm_for_training,
     lora_settings_from_config,
@@ -19,6 +19,7 @@ from cpo_trl.utils.run_manifest import write_run_manifest
 from common import add_common_args, parse_with_config, training_args_dict
 
 ensure_trl_optional_dependency_stubs()
+from transformers import PrinterCallback, ProgressCallback
 from trl import DPOConfig, DPOTrainer
 
 
@@ -58,6 +59,10 @@ def main() -> None:
             GroupedPreferenceMetricsCallback(method="dpo", beta=args.beta),
         ],
     )
+    if args.terminal_log_steps:
+        trainer.remove_callback(PrinterCallback)
+        trainer.remove_callback(ProgressCallback)
+        trainer.add_callback(SparseTrainingPrinterCallback(every_n_steps=args.terminal_log_steps))
     trainer.train()
     trainer.save_model(str(args.output_dir))
 

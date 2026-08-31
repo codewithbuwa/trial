@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import argparse
+
 from cpo_trl.metrics import grouped_preference_record
+from cpo_trl.metrics.preference import SparseTrainingPrinterCallback
 
 
 def test_grouped_preference_record_groups_dpo_logs() -> None:
@@ -49,3 +52,24 @@ def test_grouped_preference_record_omits_missing_optional_metrics() -> None:
     assert record["preference_signal"] == {}
     assert record["optimization"] == {}
     assert record["run_state"] == {"global_step": 3}
+
+
+def test_sparse_training_printer_callback_prints_only_on_interval(capsys) -> None:
+    callback = SparseTrainingPrinterCallback(every_n_steps=500)
+    args = argparse.Namespace()
+    control = argparse.Namespace()
+
+    callback.on_log(args, argparse.Namespace(global_step=5), control, logs={"loss": 0.7})
+    assert capsys.readouterr().out == ""
+
+    callback.on_log(
+        args,
+        argparse.Namespace(global_step=500),
+        control,
+        logs={"loss": 0.6, "total_flos": 123},
+    )
+    output = capsys.readouterr().out
+
+    assert "'loss': 0.6" in output
+    assert "'step': 500" in output
+    assert "total_flos" not in output
