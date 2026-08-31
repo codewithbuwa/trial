@@ -80,61 +80,6 @@ def sampled_kl_regularizer(
     return reduce_loss(losses, reduction)
 
 
-def cpo_combined_loss(
-    chosen_logps: torch.Tensor,
-    rejected_logps: torch.Tensor,
-    ref_chosen_logps: torch.Tensor | None,
-    ref_rejected_logps: torch.Tensor | None,
-    desirable_logps: torch.Tensor,
-    ref_desirable_logps: torch.Tensor | None,
-    desirable_labels: torch.Tensor,
-    z: torch.Tensor | float,
-    *,
-    alpha: float = 0.5,
-    beta: float = 0.1,
-    lambda_desirable: float = 1.0,
-    lambda_undesirable: float = 1.0,
-    kl_coef: float = 0.0,
-    kl_values: torch.Tensor | None = None,
-    reduction: str = "mean",
-) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-    """Blend KTO unary and DPO pair losses for CPO."""
-
-    if not 0.0 <= alpha <= 1.0:
-        raise ValueError("alpha must be in [0, 1]")
-    pair = dpo_pair_loss(
-        chosen_logps,
-        rejected_logps,
-        ref_chosen_logps,
-        ref_rejected_logps,
-        beta=beta,
-        reduction="none",
-    )
-    unary = kto_unary_loss(
-        desirable_logps,
-        ref_desirable_logps,
-        desirable_labels,
-        z,
-        beta=beta,
-        lambda_desirable=lambda_desirable,
-        lambda_undesirable=lambda_undesirable,
-        reduction="none",
-    )
-    kl_source = torch.zeros_like(desirable_logps) if kl_values is None else kl_values
-    if kl_coef == 0.0:
-        kl_source = kl_source.detach()
-    kl = sampled_kl_regularizer(kl_source, reduction="none")
-    total = (1.0 - alpha) * unary + alpha * pair + kl_coef * kl
-    assert_finite_tensor(total, "cpo_loss")
-    reduced = reduce_loss(total, reduction)
-    metrics = {
-        "unary_loss": reduce_loss(unary, reduction),
-        "pair_loss": reduce_loss(pair, reduction),
-        "kl_loss": reduce_loss(kl, reduction),
-    }
-    return reduced, metrics
-
-
 def derived_pair_indices(
     prompt_ids: list[str],
     cluster_ids: list[str],

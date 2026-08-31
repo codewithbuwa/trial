@@ -6,53 +6,12 @@ import torch
 from cpo_trl.finite import NonFiniteError, assert_finite_tensor
 from cpo_trl.losses import (
     ClusterReferenceZ,
-    cpo_combined_loss,
     cpo_unary_pair_loss,
     derived_pair_indices,
     dpo_pair_loss,
     kto_unary_loss,
     sampled_kl_regularizer,
 )
-
-
-def test_alpha_one_matches_pair_loss() -> None:
-    chosen = torch.tensor([3.0, 2.0])
-    rejected = torch.tensor([1.0, 2.5])
-    loss, metrics = cpo_combined_loss(
-        chosen,
-        rejected,
-        None,
-        None,
-        chosen,
-        None,
-        torch.ones_like(chosen, dtype=torch.bool),
-        0.0,
-        alpha=1.0,
-        beta=0.5,
-    )
-    expected = dpo_pair_loss(chosen, rejected, beta=0.5)
-    assert torch.allclose(loss, expected)
-    assert torch.allclose(metrics["pair_loss"], expected)
-
-
-def test_alpha_zero_matches_unary_loss() -> None:
-    logps = torch.tensor([3.0, -2.0])
-    labels = torch.tensor([True, False])
-    loss, metrics = cpo_combined_loss(
-        logps,
-        torch.zeros_like(logps),
-        None,
-        None,
-        logps,
-        None,
-        labels,
-        0.0,
-        alpha=0.0,
-        beta=0.5,
-    )
-    expected = kto_unary_loss(logps, None, labels, 0.0, beta=0.5)
-    assert torch.allclose(loss, expected)
-    assert torch.allclose(metrics["unary_loss"], expected)
 
 
 def test_kto_unary_loss_uses_prospect_value() -> None:
@@ -92,23 +51,6 @@ def test_cluster_reference_clamps_after_cluster_mean() -> None:
 
     reference.update(["math", "math"], torch.tensor([-3.0, 1.0]))
     assert reference.values["math"] == pytest.approx(0.0)
-
-
-def test_cpo_reductions_are_finite() -> None:
-    loss, metrics = cpo_combined_loss(
-        torch.tensor([2.0]),
-        torch.tensor([1.0]),
-        torch.tensor([0.5]),
-        torch.tensor([0.2]),
-        torch.tensor([2.0]),
-        torch.tensor([0.5]),
-        torch.tensor([True]),
-        torch.tensor([0.1]),
-        alpha=0.25,
-    )
-    assert torch.isfinite(loss)
-    assert torch.isfinite(metrics["unary_loss"])
-    assert torch.isfinite(metrics["pair_loss"])
 
 
 def test_derived_pair_indices_group_by_prompt_and_cluster() -> None:
