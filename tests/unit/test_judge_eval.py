@@ -224,6 +224,19 @@ def test_validate_judge_settings_sets_default_skywork_model() -> None:
     assert args.judge_model == "Skywork/Skywork-Reward-Llama-3.1-8B-v0.2"
 
 
+def test_validate_judge_settings_rejects_randomized_and_balanced_positions() -> None:
+    args = argparse.Namespace(
+        judge_provider="heuristic",
+        judge_model=None,
+        api_key_env="OPENAI_API_KEY",
+        position_balanced=True,
+        randomize_positions=True,
+    )
+
+    with pytest.raises(ValueError, match="cannot be used"):
+        validate_judge_settings(args)
+
+
 def test_build_comparisons_creates_all_model_pairs() -> None:
     rows = [{"prompt_id": "p0", "cluster_id": "coding", "instruction": "Do x", "input": ""}]
     generations = {"SFT": ["a"], "DPO": ["b"], "CPO": ["c"]}
@@ -238,6 +251,32 @@ def test_build_comparisons_creates_all_model_pairs() -> None:
         frozenset(("SFT", "CPO")),
         frozenset(("DPO", "CPO")),
     }
+
+
+def test_build_comparisons_randomizes_positions_once_per_prompt_pair() -> None:
+    rows = [
+        {"prompt_id": "p0", "cluster_id": "coding", "instruction": "Do x", "input": ""},
+        {"prompt_id": "p1", "cluster_id": "math", "instruction": "Do y", "input": ""},
+    ]
+    generations = {"KTO": ["kto0", "kto1"], "DPO": ["dpo0", "dpo1"]}
+
+    comparisons = build_comparisons(
+        rows,
+        generations,
+        seed=1,
+        position_balanced=False,
+        randomize_positions=True,
+    )
+
+    assert len(comparisons) == 2
+    assert [row["position_strategy"] for row in comparisons] == ["randomized", "randomized"]
+    assert [row["position_seed"] for row in comparisons] == [1, 1]
+    assert [row["judge_order"] for row in comparisons] == [0, 0]
+    assert [row["position_swapped"] for row in comparisons] == [True, False]
+    assert [(row["model_a"], row["model_b"]) for row in comparisons] == [
+        ("DPO", "KTO"),
+        ("KTO", "DPO"),
+    ]
 
 
 def test_response_length_stats_counts_words() -> None:

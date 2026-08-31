@@ -417,13 +417,17 @@ def build_comparisons(
     *,
     seed: int,
     position_balanced: bool,
+    randomize_positions: bool = True,
 ) -> list[dict[str, Any]]:
     rng = random.Random(seed)
     comparisons: list[dict[str, Any]] = []
     model_names = list(generations)
+    position_strategy = "position_balanced" if position_balanced else (
+        "randomized" if randomize_positions else "fixed"
+    )
     for row_index, row in enumerate(rows):
         for left, right in itertools.combinations(model_names, 2):
-            swap = rng.random() < 0.5
+            swap = randomize_positions and rng.random() < 0.5
             first_a, first_b = (right, left) if swap else (left, right)
             ordered_pairs = [(first_a, first_b)]
             if position_balanced:
@@ -443,6 +447,10 @@ def build_comparisons(
                         "response_a_words": len(generations[model_a][row_index].split()),
                         "response_b_words": len(generations[model_b][row_index].split()),
                         "position_balanced": position_balanced,
+                        "position_randomized": randomize_positions,
+                        "position_strategy": position_strategy,
+                        "position_seed": seed,
+                        "position_swapped": model_a != left,
                         "judge_order": judge_order,
                     }
                 )
@@ -570,10 +578,20 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Judge every model pair in both A/B orders to cancel response-position bias.",
     )
+    parser.add_argument(
+        "--randomize-positions",
+        action="store_true",
+        help=(
+            "Judge each model pair once with seeded random A/B presentation per prompt. "
+            "This is mutually exclusive with --position-balanced."
+        ),
+    )
     return parser.parse_args()
 
 
 def validate_judge_settings(args: argparse.Namespace) -> str:
+    if getattr(args, "position_balanced", False) and getattr(args, "randomize_positions", False):
+        raise ValueError("--randomize-positions cannot be used with --position-balanced")
     if args.judge_provider == "openai":
         api_key = os.environ.get(args.api_key_env)
         if not api_key:
@@ -626,11 +644,13 @@ def main() -> None:
         else None
     )
     records: list[dict[str, Any]] = []
+    randomize_positions = args.randomize_positions or not args.position_balanced
     for comparison in build_comparisons(
         rows,
         generations,
         seed=args.seed,
         position_balanced=args.position_balanced,
+        randomize_positions=randomize_positions,
     ):
         if args.judge_provider == "openai":
             judgment = openai_chat_judge(
@@ -691,6 +711,9 @@ def main() -> None:
         if args.judge_provider in {"openai", "prometheus"}
         else None,
         "position_balanced": args.position_balanced,
+        "position_randomized": randomize_positions,
+        "position_strategy": "position_balanced" if args.position_balanced else "randomized",
+        "position_seed": args.seed,
         "generation_lengths": generation_length_summary(generations),
         **summarize_judgments(records),
     }

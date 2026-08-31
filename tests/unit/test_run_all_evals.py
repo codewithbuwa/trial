@@ -113,6 +113,30 @@ def test_build_commands_can_switch_to_prometheus_judge() -> None:
     )
 
 
+def test_build_commands_can_randomize_judge_positions() -> None:
+    args = argparse.Namespace(
+        output_root=Path("output"),
+        data_root=Path("data/processed"),
+        eval_split="validation.jsonl",
+        beta=0.02,
+        batch_size=4,
+        max_prompts=100,
+        judge_timeout=500.0,
+        randomize_judge_positions=True,
+        openai_judge=False,
+        openai_judge_model=None,
+        prometheus_judge=True,
+        prometheus_judge_model="prometheus-eval/prometheus-7b-v2.0",
+        prometheus_base_url="http://localhost:8000/v1",
+    )
+
+    commands = build_commands(args)
+
+    judge_command = next(command for command in commands if "scripts/evaluate/evaluate_judge.py" in command)
+    assert "--randomize-positions" in judge_command
+    assert "--position-balanced" not in judge_command
+
+
 def test_build_commands_rejects_multiple_remote_judges() -> None:
     args = argparse.Namespace(
         output_root=Path("output"),

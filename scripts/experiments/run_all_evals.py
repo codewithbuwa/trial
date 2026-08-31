@@ -125,8 +125,11 @@ def build_commands(args: argparse.Namespace) -> list[list[str]]:
         str(judge_summary),
         "--judge-timeout",
         str(args.judge_timeout),
-        "--position-balanced",
     ]
+    if getattr(args, "randomize_judge_positions", False):
+        judge_command.append("--randomize-positions")
+    else:
+        judge_command.append("--position-balanced")
     if args.openai_judge:
         judge_model = args.openai_judge_model or os.environ.get("OPENAI_JUDGE_MODEL")
         if not judge_model:
@@ -227,6 +230,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--max-prompts", type=int, default=30)
     parser.add_argument("--judge-timeout", type=float, default=60.0)
+    parser.add_argument(
+        "--randomize-judge-positions",
+        action="store_true",
+        help="Use one seeded random A/B presentation per judge comparison instead of two-pass position balancing.",
+    )
     parser.add_argument("--openai-judge", action="store_true")
     parser.add_argument("--openai-judge-model", default=os.environ.get("OPENAI_JUDGE_MODEL"))
     parser.add_argument("--prometheus-judge", action="store_true")
