@@ -3,9 +3,8 @@ set -euo pipefail
 
 : "${SCRATCH_DIR:=/scratch/jordan/trial/outputs}"
 
-TRAIN_ROOT="${TRAIN_ROOT:-experiments/E5_cluster_ablation/embedding_4}"
-FULL_PROMPTS_FILE="${FULL_PROMPTS_FILE:-$TRAIN_ROOT/dpo/validation.jsonl}"
-RUN_ROOT="${RUN_ROOT:-$SCRATCH_DIR/final_method_eval_500}"
+FULL_GENERATIONS_JSONL="${FULL_GENERATIONS_JSONL:-$SCRATCH_DIR/final_method_eval/generations/final_methods_generations.jsonl}"
+RUN_ROOT="${RUN_ROOT:-$SCRATCH_DIR/final_method_eval_500_from_full}"
 SUBSET_SIZE="${SUBSET_SIZE:-500}"
 SUBSET_SEED="${SUBSET_SEED:-42}"
 SEED="${SEED:-42}"
@@ -16,9 +15,6 @@ PROMETHEUS_JUDGE_MODEL="${PROMETHEUS_JUDGE_MODEL:-prometheus-eval/prometheus-7b-
 PAIRRM_JUDGE_MODEL="${PAIRRM_JUDGE_MODEL:-llm-blender/PairRM}"
 SKYWORK_JUDGE_MODEL="${SKYWORK_JUDGE_MODEL:-Skywork/Skywork-Reward-Llama-3.1-8B-v0.2}"
 
-MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-768}"
-MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-256}"
-GEN_BATCH_SIZE="${GEN_BATCH_SIZE:-4}"
 JUDGE_TIMEOUT="${JUDGE_TIMEOUT:-120}"
 JUDGE_MAX_LENGTH="${JUDGE_MAX_LENGTH:-4096}"
 
@@ -26,44 +22,21 @@ RUN_PROMETHEUS="${RUN_PROMETHEUS:-1}"
 RUN_PAIRRM="${RUN_PAIRRM:-1}"
 RUN_SKYWORK="${RUN_SKYWORK:-1}"
 
-DPO="$SCRATCH_DIR/dpo_final/dpo_lr1em05_b0p005_gn0p3"
-KTO="$SCRATCH_DIR/kto_final/kto_lr1em05_b0p005_gn0p3"
-CPO_UNARY="$SCRATCH_DIR/cpo_unary_final/cpo_lr1em05_b0p005_gn0p3_a0_token-kl"
-CPO_A03="$SCRATCH_DIR/cpo_alpha_sweep/cpo_lr1em05_b0p005_gn0p3_a0p3_token-kl"
-CPO_A05="$SCRATCH_DIR/cpo_alpha_sweep/cpo_lr1em05_b0p005_gn0p3_a0p5_token-kl"
-CPO_A07="$SCRATCH_DIR/cpo_alpha_sweep/cpo_lr1em05_b0p005_gn0p3_a0p7_token-kl"
-
-MODELS=(
-  "DPO=$DPO"
-  "KTO=$KTO"
-  "CPO_UNARY=$CPO_UNARY"
-  "CPO_A03=$CPO_A03"
-  "CPO_A05=$CPO_A05"
-  "CPO_A07=$CPO_A07"
-)
-
-MODEL_COUNT="${#MODELS[@]}"
-EXPECTED_GENERATION_LINES="$((SUBSET_SIZE * MODEL_COUNT))"
-
 mkdir -p "$RUN_ROOT/subsets" "$RUN_ROOT/generations" "$RUN_ROOT/judges" "$RUN_ROOT/analysis"
 
-for spec in "${MODELS[@]}"; do
-  name="${spec%%=*}"
-  path="${spec#*=}"
-  if [[ ! -d "$path" ]]; then
-    echo "Missing model directory for $name: $path" >&2
-    exit 1
-  fi
-done
+if [[ ! -s "$FULL_GENERATIONS_JSONL" ]]; then
+  echo "Missing full generations file: $FULL_GENERATIONS_JSONL" >&2
+  exit 1
+fi
 
-SUBSET_FILE="$RUN_ROOT/subsets/validation_${SUBSET_SIZE}_seed${SUBSET_SEED}.jsonl"
-GENERATIONS_JSONL="$RUN_ROOT/generations/final_methods_${SUBSET_SIZE}_generations.jsonl"
-GENERATIONS_MD="$RUN_ROOT/generations/final_methods_${SUBSET_SIZE}_generations.md"
+SUBSET_GENERATIONS_JSONL="$RUN_ROOT/generations/final_methods_${SUBSET_SIZE}_seed${SUBSET_SEED}_generations.jsonl"
 
-if [[ "$FORCE" == "1" || ! -s "$SUBSET_FILE" ]]; then
-  poetry run python - "$FULL_PROMPTS_FILE" "$SUBSET_FILE" "$SUBSET_SIZE" "$SUBSET_SEED" <<'PY'
+if [[ "$FORCE" == "1" || ! -s "$SUBSET_GENERATIONS_JSONL" ]]; then
+  poetry run python - "$FULL_GENERATIONS_JSONL" "$SUBSET_GENERATIONS_JSONL" "$SUBSET_SIZE" "$SUBSET_SEED" <<'PY'
+import json
 import random
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 src = Path(sys.argv[1])
@@ -71,38 +44,45 @@ dst = Path(sys.argv[2])
 n = int(sys.argv[3])
 seed = int(sys.argv[4])
 
-rows = src.read_text(encoding="utf-8").splitlines()
-if len(rows) < n:
-    raise SystemExit(f"Only {len(rows)} rows available, cannot sample {n}")
+by_prompt = defaultdict(list)
+prompt_order = []
+with src.open(encoding="utf-8") as handle:
+    for line in handle:
+        record = json.loads(line)
+        prompt_id = str(record["prompt_id"])
+        if prompt_id not in by_prompt:
+            prompt_order.append(prompt_id)
+        by_prompt[prompt_id].append(record)
+
+if len(prompt_order) < n:
+    raise SystemExit(f"Only {len(prompt_order)} prompts available, cannot sample {n}")
+
+model_names = sorted({str(record["model"]) for rows in by_prompt.values() for record in rows})
+missing = {
+    prompt_id: sorted(set(model_names) - {str(record["model"]) for record in by_prompt[prompt_id]})
+    for prompt_id in prompt_order
+}
+missing = {prompt_id: values for prompt_id, values in missing.items() if values}
+if missing:
+    preview = dict(list(missing.items())[:5])
+    raise SystemExit(f"Full generations file has prompts with missing model responses: {preview}")
 
 rng = random.Random(seed)
-idxs = sorted(rng.sample(range(len(rows)), n))
+sampled = set(rng.sample(prompt_order, n))
 dst.parent.mkdir(parents=True, exist_ok=True)
-dst.write_text("\n".join(rows[i] for i in idxs) + "\n", encoding="utf-8")
-print(f"Wrote {n} sampled rows from {len(rows)} validation rows to {dst}")
+with dst.open("w", encoding="utf-8") as handle:
+    for prompt_id in prompt_order:
+        if prompt_id in sampled:
+            for record in by_prompt[prompt_id]:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+print(
+    f"Wrote {n} sampled prompts x {len(model_names)} models "
+    f"from {len(prompt_order)} prompts to {dst}"
+)
 PY
 else
-  echo "Using existing subset: $SUBSET_FILE"
-fi
-
-generation_lines=0
-if [[ -s "$GENERATIONS_JSONL" ]]; then
-  generation_lines="$(wc -l < "$GENERATIONS_JSONL" | tr -d ' ')"
-fi
-
-if [[ "$FORCE" == "1" || "$generation_lines" != "$EXPECTED_GENERATION_LINES" ]]; then
-  poetry run python scripts/evaluate/generate_from_prompts.py \
-    --prompts-file "$SUBSET_FILE" \
-    --models "${MODELS[@]}" \
-    --temperature 0 \
-    --batch-size "$GEN_BATCH_SIZE" \
-    --max-prompt-length "$MAX_PROMPT_LENGTH" \
-    --max-new-tokens "$MAX_NEW_TOKENS" \
-    --seed "$SEED" \
-    --output-jsonl "$GENERATIONS_JSONL" \
-    --output-md "$GENERATIONS_MD"
-else
-  echo "Skipping generation; found $generation_lines/$EXPECTED_GENERATION_LINES lines: $GENERATIONS_JSONL"
+  echo "Using existing sampled generations: $SUBSET_GENERATIONS_JSONL"
 fi
 
 run_judge() {
@@ -118,7 +98,7 @@ run_judge() {
   fi
 
   poetry run python scripts/evaluate/evaluate_judge.py \
-    --generations-file "$GENERATIONS_JSONL" \
+    --generations-file "$SUBSET_GENERATIONS_JSONL" \
     --judge-provider "$provider" \
     --judge-model "$model" \
     $extra_arg \
@@ -142,7 +122,11 @@ if [[ "$RUN_SKYWORK" == "1" ]]; then
   run_judge "skywork" "$SKYWORK_JUDGE_MODEL"
 fi
 
-poetry run python - "$GENERATIONS_JSONL" "$RUN_ROOT/analysis/response_stats.json" <<'PY'
+write_response_stats() {
+  local generations_jsonl="$1"
+  local output_json="$2"
+
+  poetry run python - "$generations_jsonl" "$output_json" <<'PY'
 import json
 import math
 import statistics
@@ -190,5 +174,9 @@ output_path.parent.mkdir(parents=True, exist_ok=True)
 output_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 print(json.dumps(summary, indent=2))
 PY
+}
 
-echo "Generation and judge evaluation complete: $RUN_ROOT"
+write_response_stats "$FULL_GENERATIONS_JSONL" "$RUN_ROOT/analysis/response_stats_full.json"
+write_response_stats "$SUBSET_GENERATIONS_JSONL" "$RUN_ROOT/analysis/response_stats_${SUBSET_SIZE}_seed${SUBSET_SEED}.json"
+
+echo "Judge evaluation complete: $RUN_ROOT"
