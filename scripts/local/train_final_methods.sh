@@ -29,10 +29,10 @@ COMMON_ARGS=(
   --reference-model-name-or-path "$REFERENCE_MODEL"
 )
 
-poetry run python scripts/experiments/run_preference_sweeps.py \
-  --methods dpo \
-  --output-dir "$SCRATCH_DIR/dpo_final" \
-  "${COMMON_ARGS[@]}"
+# poetry run python scripts/experiments/run_preference_sweeps.py \
+#   --methods dpo \
+#   --output-dir "$SCRATCH_DIR/dpo_final" \
+#   "${COMMON_ARGS[@]}"
 
 poetry run python scripts/experiments/run_preference_sweeps.py \
   --methods kto \
