@@ -14,7 +14,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-$SCRATCH_DIR/cpo_kl_sweep}"
 
 # At the observed KL scale (~50-200), this spans negligible through strong
 # regularization without immediately overwhelming the ~0.5 base objective.
-KL_COEFS="${KL_COEFS:-0,1e-4,3e-4,3e-3,1e-2}"
+KL_COEFS="${KL_COEFS:-1e-4,3e-3,1e-2}"
 ALPHAS="${ALPHAS:-0.0,0.3}"
 SEED="${SEED:-42}"
 
