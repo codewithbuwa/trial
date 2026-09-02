@@ -6,14 +6,25 @@ import json
 import math
 import os
 import random
-import re
-import urllib.error
-import urllib.request
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 from cpo_trl.data.datasets import load_jsonl, validate_rows
+from cpo_trl.evaluation.judges import (
+    format_reward_model_input,
+    heuristic_judge,
+    load_pairrm_ranker,
+    load_skywork_reward_model,
+    openai_chat_judge,
+    pairrm_judge,
+    parse_judge_json,
+    parse_pairwise_winner_text,
+    prometheus_judge,
+    prometheus_prompt,
+    skywork_judge,
+    skywork_reward_score,
+)
 
 
 def response_length_stats(responses: list[str]) -> dict[str, float | int | None]:
@@ -60,300 +71,6 @@ def parse_model_specs(values: list[str]) -> list[tuple[str, str]]:
     if len(specs) < 2:
         raise ValueError("judge evaluation requires at least two models")
     return specs
-
-
-def parse_judge_json(text: str) -> dict[str, str]:
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-        if not match:
-            fallback = parse_pairwise_winner_text(text)
-            if fallback["winner"] != "tie":
-                return fallback
-            return {"winner": "tie", "reason": "judge returned non-JSON output"}
-        try:
-            parsed = json.loads(match.group(0))
-        except json.JSONDecodeError:
-            fallback = parse_pairwise_winner_text(text)
-            if fallback["winner"] != "tie":
-                return fallback
-            return {"winner": "tie", "reason": "judge returned invalid JSON"}
-    winner = str(parsed.get("winner", "tie")).strip()
-    if winner not in {"A", "B", "tie"}:
-        winner = "tie"
-    return {"winner": winner, "reason": str(parsed.get("reason", "")).strip()}
-
-
-def parse_pairwise_winner_text(text: str) -> dict[str, str]:
-    normalized = text.strip()
-    patterns = (
-        r"(?:winner|better response|preferred response|choice|result)\s*[:\-]\s*(A|B|tie)\b",
-        r"\[(?:winner|result|choice)\]\s*(A|B|tie)\b",
-        r"\b(response|answer)\s+(A|B)\s+(?:wins|is better|is preferred)\b",
-        r"\b(A|B)\s+(?:wins|is better|is preferred)\b",
-        r"\b(tie)\b",
-    )
-    for pattern in patterns:
-        match = re.search(pattern, normalized, flags=re.IGNORECASE)
-        if not match:
-            continue
-        winner = match.group(match.lastindex or 1).upper()
-        if winner == "TIE":
-            winner = "tie"
-        return {"winner": winner, "reason": normalized[:500]}
-    return {"winner": "tie", "reason": "judge returned no parseable winner"}
-
-
-def heuristic_judge(response_a: str, response_b: str) -> dict[str, str]:
-    words_a = len(response_a.split())
-    words_b = len(response_b.split())
-    if words_a == words_b:
-        return {"winner": "tie", "reason": "heuristic tie on response length"}
-    winner = "A" if words_a > words_b else "B"
-    return {"winner": winner, "reason": "heuristic picked the longer response"}
-
-
-def load_pairrm_ranker(model_name: str) -> Any:
-    try:
-        import llm_blender
-    except ImportError as exc:
-        raise RuntimeError(
-            "PairRM judge requires llm-blender. Install it with: "
-            "poetry run pip install git+https://github.com/yuchenlin/LLM-Blender.git"
-        ) from exc
-    blender = llm_blender.Blender()
-    blender.loadranker(model_name)
-    return blender
-
-
-def pairrm_judge(
-    *,
-    ranker: Any,
-    instruction: str,
-    input_text: str,
-    response_a: str,
-    response_b: str,
-) -> dict[str, str]:
-    prompt = instruction if not input_text else f"{instruction}\n\n{input_text}"
-    ranks = ranker.rank(
-        [prompt],
-        [[response_a, response_b]],
-        return_scores=False,
-        batch_size=1,
-    )
-    first_rank, second_rank = [float(value) for value in ranks[0]]
-    if first_rank < second_rank:
-        return {"winner": "A", "reason": "PairRM ranked response A higher"}
-    if second_rank < first_rank:
-        return {"winner": "B", "reason": "PairRM ranked response B higher"}
-    return {"winner": "tie", "reason": "PairRM returned equal ranks"}
-
-
-def load_skywork_reward_model(model_name: str, max_length: int) -> dict[str, Any]:
-    import torch
-    from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    model_kwargs: dict[str, Any] = {
-        "num_labels": 1,
-        "attn_implementation": "eager",
-    }
-    if torch.cuda.is_available():
-        model_kwargs["torch_dtype"] = torch.bfloat16
-        model_kwargs["device_map"] = "cuda:0"
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, **model_kwargs)
-    if not torch.cuda.is_available():
-        model.to(device)
-    model.eval()
-    return {
-        "tokenizer": tokenizer,
-        "model": model,
-        "device": device,
-        "max_length": max_length,
-    }
-
-
-def format_reward_model_input(tokenizer: Any, instruction: str, input_text: str, response: str) -> str:
-    prompt = instruction if not input_text else f"{instruction}\n\n{input_text}"
-    messages = [
-        {"role": "user", "content": prompt},
-        {"role": "assistant", "content": response},
-    ]
-    try:
-        return tokenizer.apply_chat_template(messages, tokenize=False)
-    except (AttributeError, ValueError):
-        return f"User: {prompt}\n\nAssistant: {response}"
-
-
-def skywork_reward_score(
-    *,
-    reward_model: dict[str, Any],
-    instruction: str,
-    input_text: str,
-    response: str,
-) -> float:
-    import torch
-
-    tokenizer = reward_model["tokenizer"]
-    model = reward_model["model"]
-    device = reward_model["device"]
-    text = format_reward_model_input(tokenizer, instruction, input_text, response)
-    encoded = tokenizer(
-        text,
-        return_tensors="pt",
-        truncation=True,
-        max_length=reward_model["max_length"],
-    ).to(device)
-    with torch.no_grad():
-        logits = model(**encoded).logits
-    return float(logits.squeeze().detach().float().cpu().item())
-
-
-def skywork_judge(
-    *,
-    reward_model: dict[str, Any],
-    instruction: str,
-    input_text: str,
-    response_a: str,
-    response_b: str,
-) -> dict[str, str]:
-    score_a = skywork_reward_score(
-        reward_model=reward_model,
-        instruction=instruction,
-        input_text=input_text,
-        response=response_a,
-    )
-    score_b = skywork_reward_score(
-        reward_model=reward_model,
-        instruction=instruction,
-        input_text=input_text,
-        response=response_b,
-    )
-    if score_a > score_b:
-        winner = "A"
-    elif score_b > score_a:
-        winner = "B"
-    else:
-        winner = "tie"
-    return {
-        "winner": winner,
-        "reason": f"Skywork reward scores: A={score_a:.6f}, B={score_b:.6f}",
-    }
-
-
-def prometheus_prompt(
-    *,
-    instruction: str,
-    input_text: str,
-    response_a: str,
-    response_b: str,
-) -> str:
-    rubric = (
-        "Choose the better assistant response based on instruction-following, "
-        "correctness, helpfulness, clarity, completeness, and safety. "
-        "Do not prefer longer answers unless the extra detail improves quality."
-    )
-    return (
-        "You are a fair evaluator language model.\n\n"
-        f"Instruction:\n{instruction}\n\n"
-        f"Input:\n{input_text}\n\n"
-        f"Response A:\n{response_a}\n\n"
-        f"Response B:\n{response_b}\n\n"
-        f"Rubric:\n{rubric}\n\n"
-        'Return JSON only: {"winner": "A"|"B"|"tie", "reason": "..."}'
-    )
-
-
-def prometheus_judge(
-    *,
-    instruction: str,
-    input_text: str,
-    response_a: str,
-    response_b: str,
-    model: str,
-    base_url: str,
-    timeout: float,
-) -> dict[str, str]:
-    prompt = prometheus_prompt(
-        instruction=instruction,
-        input_text=input_text,
-        response_a=response_a,
-        response_b=response_b,
-    )
-    payload = {
-        "model": model,
-        "temperature": 0,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    request = urllib.request.Request(
-        f"{base_url.rstrip('/')}/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": "Bearer dummy",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Prometheus judge request failed with HTTP {exc.code}: {detail}") from exc
-    content = body["choices"][0]["message"]["content"]
-    return parse_judge_json(content)
-
-
-def openai_chat_judge(
-    *,
-    instruction: str,
-    input_text: str,
-    response_a: str,
-    response_b: str,
-    model: str,
-    base_url: str,
-    api_key: str,
-    timeout: float,
-) -> dict[str, str]:
-    user_content = (
-        "You are judging two assistant responses to the same user request. "
-        "Choose the response that is more helpful, correct, complete, and safe. "
-        "Ignore formatting differences unless they affect usefulness. "
-        'Return only JSON with keys "winner" and "reason"; winner must be "A", "B", or "tie".\n\n'
-        f"Instruction:\n{instruction}\n\n"
-        f"Input:\n{input_text}\n\n"
-        f"Response A:\n{response_a}\n\n"
-        f"Response B:\n{response_b}"
-    )
-    payload = {
-        "model": model,
-        "temperature": 0,
-        "messages": [
-            {"role": "system", "content": "You are a strict pairwise evaluator."},
-            {"role": "user", "content": user_content},
-        ],
-    }
-    request = urllib.request.Request(
-        f"{base_url.rstrip('/')}/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"judge request failed with HTTP {exc.code}: {detail}") from exc
-    content = body["choices"][0]["message"]["content"]
-    return parse_judge_json(content)
 
 
 def generate_model_outputs(

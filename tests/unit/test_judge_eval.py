@@ -5,7 +5,8 @@ import json
 
 import pytest
 
-import scripts.evaluate.evaluate_judge as evaluate_judge
+import cpo_trl.evaluation.judges.prometheus as prometheus_evaluator
+import cpo_trl.evaluation.judges.skywork as skywork_evaluator
 from scripts.evaluate.evaluate_judge import (
     build_comparisons,
     format_reward_model_input,
@@ -91,7 +92,7 @@ def test_prometheus_judge_calls_openai_compatible_endpoint(monkeypatch: pytest.M
         captured["authorization"] = request.headers["Authorization"]
         return FakeResponse()
 
-    monkeypatch.setattr(evaluate_judge.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(prometheus_evaluator.urllib.request, "urlopen", fake_urlopen)
 
     judgment = prometheus_judge(
         instruction="Explain DPO",
@@ -171,7 +172,7 @@ def test_skywork_judge_prefers_higher_reward_score(monkeypatch: pytest.MonkeyPat
     ) -> float:
         return {"short": 0.1, "clear answer": 0.9}[response]
 
-    monkeypatch.setattr(evaluate_judge, "skywork_reward_score", fake_reward_score)
+    monkeypatch.setattr(skywork_evaluator, "skywork_reward_score", fake_reward_score)
 
     judgment = skywork_judge(
         reward_model={},
