@@ -33,7 +33,9 @@ dist/
 *~
 
 # Large/local artifacts
-experiments/*
+experiments/**
+!experiments/**/
+!experiments/**/.gitkeep
 outputs*
 results*
 scripts/local/download_cpo_beta_sweep.sh
