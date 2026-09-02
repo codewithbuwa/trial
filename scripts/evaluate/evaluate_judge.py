@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import itertools
 import json
 import math
 import os
 import random
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,8 @@ from cpo_trl.evaluation.judges import (
     skywork_judge,
     skywork_reward_score,
 )
+
+JUDGE_EVALUATOR_VERSION = 2
 
 
 def response_length_stats(responses: list[str]) -> dict[str, float | int | None]:
@@ -181,7 +184,9 @@ def summarize_judgments(records: list[dict[str, Any]]) -> dict[str, Any]:
     totals: dict[str, float] = defaultdict(float)
     pairwise: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     clusters: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
-    for record in records:
+    status_counts = Counter(str(record.get("status", "ok")) for record in records)
+    scored_records = [record for record in records if record.get("status", "ok") == "ok"]
+    for record in scored_records:
         model_a = record["model_a"]
         model_b = record["model_b"]
         cluster_id = record.get("cluster_id", "unknown")
@@ -203,7 +208,10 @@ def summarize_judgments(records: list[dict[str, Any]]) -> dict[str, Any]:
         clusters[f"{cluster_id}:{model_a}"]["total"] += 1
         clusters[f"{cluster_id}:{model_b}"]["total"] += 1
     return {
-        "total_comparisons": len(records),
+        "requested_comparisons": len(records),
+        "total_comparisons": len(scored_records),
+        "failed_comparisons": len(records) - len(scored_records),
+        "judgment_status_counts": dict(sorted(status_counts.items())),
         "models": {
             model: {
                 "comparisons": int(total),
@@ -285,6 +293,95 @@ def load_generation_records(path: Path) -> tuple[list[dict[str, Any]], dict[str,
     return rows, generations
 
 
+def comparison_id(
+    comparison: dict[str, Any],
+    *,
+    judge_provider: str,
+    judge_model: str | None,
+    judge_config: dict[str, Any] | None = None,
+) -> str:
+    identity = {
+        "prompt_id": comparison["prompt_id"],
+        "cluster_id": comparison.get("cluster_id", "unknown"),
+        "instruction": comparison["instruction"],
+        "input": comparison.get("input", ""),
+        "model_a": comparison["model_a"],
+        "model_b": comparison["model_b"],
+        "response_a": comparison["response_a"],
+        "response_b": comparison["response_b"],
+        "judge_order": comparison["judge_order"],
+        "position_seed": comparison["position_seed"],
+        "judge_provider": judge_provider,
+        "judge_model": judge_model,
+        "judge_config": judge_config or {},
+        "evaluator_version": JUDGE_EVALUATOR_VERSION,
+    }
+    encoded = json.dumps(identity, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def load_existing_judgments(path: Path) -> dict[str, dict[str, Any]]:
+    if not path.exists():
+        return {}
+    records: dict[str, dict[str, Any]] = {}
+    contents = path.read_bytes()
+    lines = contents.splitlines(keepends=True)
+    byte_offset = 0
+    for line_number, raw_line in enumerate(lines, start=1):
+        stripped = raw_line.strip()
+        if not stripped:
+            byte_offset += len(raw_line)
+            continue
+        try:
+            record = json.loads(stripped.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            if line_number == len(lines):
+                with path.open("r+b") as handle:
+                    handle.truncate(byte_offset)
+                print(f"Warning: removed incomplete final record from resume file {path}")
+                break
+            raise ValueError(
+                f"invalid JSON in resume file {path} at line {line_number}"
+            ) from exc
+        record_id = record.get("comparison_id")
+        if not record_id:
+            raise ValueError(
+                f"resume file {path} contains legacy records without comparison_id; "
+                "use --no-resume or choose a new output path"
+            )
+        records[str(record_id)] = record
+        byte_offset += len(raw_line)
+    if path.stat().st_size and not path.read_bytes().endswith(b"\n"):
+        with path.open("ab") as handle:
+            handle.write(b"\n")
+    return records
+
+
+def write_json_atomic(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def judge_configuration(args: argparse.Namespace) -> dict[str, Any]:
+    configuration: dict[str, Any] = {}
+    if args.judge_provider in {"openai", "prometheus"}:
+        configuration["base_url"] = args.openai_base_url
+    if args.judge_provider == "skywork":
+        configuration.update(
+            {
+                "max_length": args.judge_max_length,
+                "tie_threshold": args.skywork_tie_threshold,
+            }
+        )
+    return configuration
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Judge saved generations from multiple models.")
     parser.add_argument("--generations-file", type=Path, help="JSONL produced by generate_from_prompts.py")
@@ -309,7 +406,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--judge-timeout", type=float, default=60.0)
     parser.add_argument("--judge-max-length", type=int, default=4096)
+    parser.add_argument("--judge-max-retries", type=int, default=3)
+    parser.add_argument("--judge-retry-base-seconds", type=float, default=1.0)
+    parser.add_argument("--judge-parse-retries", type=int, default=1)
     parser.add_argument("--skywork-tie-threshold", type=float, default=0.0)
+    parser.add_argument("--checkpoint-every", type=int, default=1)
+    parser.add_argument(
+        "--resume",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Resume successful comparisons from output JSONL (default: enabled).",
+    )
     position_group = parser.add_mutually_exclusive_group()
     position_group.add_argument(
         "--position-balanced",
@@ -319,7 +426,9 @@ def parse_args() -> argparse.Namespace:
     position_group.add_argument(
         "--randomize-positions",
         action="store_true",
-        help="Judge each pair once with seeded random A/B presentation (the default).",
+        help=(
+            "Judge each pair once with seeded random A/B presentation (the default)."
+        ),
     )
     position_group.add_argument(
         "--fixed-positions",
@@ -337,6 +446,14 @@ def validate_judge_settings(args: argparse.Namespace) -> str:
     )
     if sum(position_flags) > 1:
         raise ValueError("position selection flags cannot be used together")
+    if getattr(args, "judge_max_retries", 0) < 0:
+        raise ValueError("--judge-max-retries must be non-negative")
+    if getattr(args, "judge_retry_base_seconds", 0.0) < 0:
+        raise ValueError("--judge-retry-base-seconds must be non-negative")
+    if getattr(args, "judge_parse_retries", 0) < 0:
+        raise ValueError("--judge-parse-retries must be non-negative")
+    if getattr(args, "checkpoint_every", 1) < 1:
+        raise ValueError("--checkpoint-every must be at least 1")
     if getattr(args, "skywork_tie_threshold", 0.0) < 0:
         raise ValueError("--skywork-tie-threshold must be non-negative")
     if args.judge_provider == "skywork" and getattr(args, "position_balanced", False):
@@ -362,8 +479,80 @@ def validate_judge_settings(args: argparse.Namespace) -> str:
     return ""
 
 
+def evaluate_comparison(
+    comparison: dict[str, Any],
+    *,
+    args: argparse.Namespace,
+    api_key: str,
+    pairrm_ranker: Any,
+    skywork_reward_model: dict[str, Any] | None,
+) -> dict[str, Any]:
+    parse_attempts = 0
+    max_parse_attempts = 1 + (
+        args.judge_parse_retries
+        if args.judge_provider in {"openai", "prometheus"}
+        else 0
+    )
+    while parse_attempts < max_parse_attempts:
+        parse_attempts += 1
+        if args.judge_provider == "openai":
+            judgment = openai_chat_judge(
+                instruction=comparison["instruction"],
+                input_text=comparison["input"],
+                response_a=comparison["response_a"],
+                response_b=comparison["response_b"],
+                model=args.judge_model,
+                base_url=args.openai_base_url,
+                api_key=api_key,
+                timeout=args.judge_timeout,
+                max_retries=args.judge_max_retries,
+                retry_base_seconds=args.judge_retry_base_seconds,
+            )
+        elif args.judge_provider == "prometheus":
+            judgment = prometheus_judge(
+                instruction=comparison["instruction"],
+                input_text=comparison["input"],
+                response_a=comparison["response_a"],
+                response_b=comparison["response_b"],
+                model=args.judge_model,
+                base_url=args.openai_base_url,
+                timeout=args.judge_timeout,
+                max_retries=args.judge_max_retries,
+                retry_base_seconds=args.judge_retry_base_seconds,
+            )
+        elif args.judge_provider == "pairrm":
+            judgment = pairrm_judge(
+                ranker=pairrm_ranker,
+                instruction=comparison["instruction"],
+                input_text=comparison["input"],
+                response_a=comparison["response_a"],
+                response_b=comparison["response_b"],
+            )
+        elif args.judge_provider == "skywork":
+            if skywork_reward_model is None:
+                raise RuntimeError("Skywork reward model was not loaded")
+            judgment = skywork_judge(
+                reward_model=skywork_reward_model,
+                instruction=comparison["instruction"],
+                input_text=comparison["input"],
+                response_a=comparison["response_a"],
+                response_b=comparison["response_b"],
+                tie_threshold=args.skywork_tie_threshold,
+            )
+        else:
+            judgment = heuristic_judge(
+                comparison["response_a"],
+                comparison["response_b"],
+            )
+        if judgment.get("status", "ok") != "parse_error":
+            break
+    judgment["parse_attempts"] = parse_attempts
+    return judgment
+
+
 def main() -> None:
     args = parse_args()
+    api_key = validate_judge_settings(args)
     if args.generations_file:
         rows, generations = load_generation_records(args.generations_file)
     else:
@@ -387,7 +576,6 @@ def main() -> None:
             )
             for name, path in model_specs
         }
-    api_key = validate_judge_settings(args)
     pairrm_ranker = (
         load_pairrm_ranker(args.judge_model)
         if args.judge_provider == "pairrm"
@@ -398,66 +586,98 @@ def main() -> None:
         if args.judge_provider == "skywork"
         else None
     )
-    records: list[dict[str, Any]] = []
     randomize_positions = not args.position_balanced and not args.fixed_positions
-    for comparison in build_comparisons(
+    comparisons = build_comparisons(
         rows,
         generations,
         seed=args.seed,
         position_balanced=args.position_balanced,
         randomize_positions=randomize_positions,
-    ):
-        if args.judge_provider == "openai":
-            judgment = openai_chat_judge(
-                instruction=comparison["instruction"],
-                input_text=comparison["input"],
-                response_a=comparison["response_a"],
-                response_b=comparison["response_b"],
-                model=args.judge_model,
-                base_url=args.openai_base_url,
-                api_key=api_key,
-                timeout=args.judge_timeout,
-            )
-        elif args.judge_provider == "prometheus":
-            judgment = prometheus_judge(
-                instruction=comparison["instruction"],
-                input_text=comparison["input"],
-                response_a=comparison["response_a"],
-                response_b=comparison["response_b"],
-                model=args.judge_model,
-                base_url=args.openai_base_url,
-                timeout=args.judge_timeout,
-            )
-        elif args.judge_provider == "pairrm":
-            judgment = pairrm_judge(
-                ranker=pairrm_ranker,
-                instruction=comparison["instruction"],
-                input_text=comparison["input"],
-                response_a=comparison["response_a"],
-                response_b=comparison["response_b"],
-                tie_threshold=args.skywork_tie_threshold,
-            )
-        elif args.judge_provider == "skywork":
-            judgment = skywork_judge(
-                reward_model=skywork_reward_model,
-                instruction=comparison["instruction"],
-                input_text=comparison["input"],
-                response_a=comparison["response_a"],
-                response_b=comparison["response_b"],
-            )
-        else:
-            judgment = heuristic_judge(comparison["response_a"], comparison["response_b"])
-        winner = judgment["winner"]
-        winner_model = "tie"
-        if winner == "A":
-            winner_model = comparison["model_a"]
-        elif winner == "B":
-            winner_model = comparison["model_b"]
-        records.append({**comparison, **judgment, "winner_model": winner_model})
+    )
+    active_judge_configuration = judge_configuration(args)
+    planned = {
+        comparison_id(
+            comparison,
+            judge_provider=args.judge_provider,
+            judge_model=args.judge_model,
+            judge_config=active_judge_configuration,
+        ): comparison
+        for comparison in comparisons
+    }
     args.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
-    with args.output_jsonl.open("w", encoding="utf-8") as handle:
-        for record in records:
+    existing = load_existing_judgments(args.output_jsonl) if args.resume else {}
+    unmatched_existing = set(existing) - set(planned)
+    if unmatched_existing:
+        raise ValueError(
+            f"resume file {args.output_jsonl} contains {len(unmatched_existing)} "
+            "comparison(s) outside the current evaluation; use --no-resume or "
+            "choose a new output path"
+        )
+    records_by_id = {
+        record_id: record
+        for record_id, record in existing.items()
+        if record_id in planned
+    }
+    resumed_comparisons = sum(
+        record.get("status", "ok") == "ok" for record in records_by_id.values()
+    )
+    output_mode = "a" if args.resume else "w"
+    newly_attempted = 0
+    with args.output_jsonl.open(output_mode, encoding="utf-8") as handle:
+        for record_id, comparison in planned.items():
+            prior = records_by_id.get(record_id)
+            if prior and prior.get("status", "ok") == "ok":
+                continue
+            try:
+                judgment = evaluate_comparison(
+                    comparison,
+                    args=args,
+                    api_key=api_key,
+                    pairrm_ranker=pairrm_ranker,
+                    skywork_reward_model=skywork_reward_model,
+                )
+            except Exception as exc:
+                judgment = {
+                    "winner": None,
+                    "winner_model": None,
+                    "reason": str(exc),
+                    "status": "error",
+                    "error_type": type(exc).__name__,
+                }
+            winner = judgment.get("winner")
+            winner_model = None
+            if judgment.get("status", "ok") == "ok":
+                if winner == "A":
+                    winner_model = comparison["model_a"]
+                elif winner == "B":
+                    winner_model = comparison["model_b"]
+                elif winner == "tie":
+                    winner_model = "tie"
+                else:
+                    judgment = {
+                        **judgment,
+                        "status": "parse_error",
+                        "reason": f"evaluator returned invalid winner: {winner!r}",
+                    }
+            record = {
+                **comparison,
+                **judgment,
+                "winner_model": winner_model,
+                "comparison_id": record_id,
+                "judge_provider": args.judge_provider,
+                "judge_model": args.judge_model,
+                "judge_configuration": active_judge_configuration,
+                "evaluator_version": JUDGE_EVALUATOR_VERSION,
+            }
+            records_by_id[record_id] = record
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            handle.flush()
+            newly_attempted += 1
+            if newly_attempted % args.checkpoint_every == 0:
+                os.fsync(handle.fileno())
+        if newly_attempted % args.checkpoint_every:
+            os.fsync(handle.fileno())
+    records = [records_by_id[record_id] for record_id in planned]
     if args.position_balanced:
         position_strategy = "position_balanced"
     elif randomize_positions:
@@ -469,6 +689,7 @@ def main() -> None:
         "generations_file": str(args.generations_file) if args.generations_file else None,
         "judge_provider": args.judge_provider,
         "judge_model": args.judge_model,
+        "judge_configuration": active_judge_configuration,
         "judge_base_url": args.openai_base_url
         if args.judge_provider in {"openai", "prometheus"}
         else None,
@@ -476,11 +697,13 @@ def main() -> None:
         "position_randomized": randomize_positions,
         "position_strategy": position_strategy,
         "position_seed": args.seed,
+        "resume_enabled": args.resume,
+        "resumed_comparisons": resumed_comparisons,
+        "newly_attempted_comparisons": newly_attempted,
         "generation_lengths": generation_length_summary(generations),
         **summarize_judgments(records),
     }
-    args.summary_json.parent.mkdir(parents=True, exist_ok=True)
-    args.summary_json.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(args.summary_json, summary)
     print(json.dumps(summary, indent=2))
 
 

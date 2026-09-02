@@ -23,7 +23,7 @@ def pairrm_judge(
     input_text: str,
     response_a: str,
     response_b: str,
-) -> dict[str, str]:
+) -> dict[str, object]:
     prompt = instruction if not input_text else f"{instruction}\n\n{input_text}"
     ranks = ranker.rank(
         [prompt],
@@ -33,7 +33,15 @@ def pairrm_judge(
     )
     first_rank, second_rank = [float(value) for value in ranks[0]]
     if first_rank < second_rank:
-        return {"winner": "A", "reason": "PairRM ranked response A higher"}
-    if second_rank < first_rank:
-        return {"winner": "B", "reason": "PairRM ranked response B higher"}
-    return {"winner": "tie", "reason": "PairRM returned equal ranks"}
+        winner, reason = "A", "PairRM ranked response A higher"
+    elif second_rank < first_rank:
+        winner, reason = "B", "PairRM ranked response B higher"
+    else:
+        winner, reason = "tie", "PairRM returned equal ranks"
+    return {
+        "winner": winner,
+        "reason": reason,
+        "status": "ok",
+        "rank_a": first_rank,
+        "rank_b": second_rank,
+    }
