@@ -117,6 +117,49 @@ def test_build_sweep_configs_can_set_sparse_terminal_logging(tmp_path: Path) -> 
     assert runs[0]["config"]["terminal_log_steps"] == 500
 
 
+def test_build_sweep_configs_expands_cpo_kl_coefficients(tmp_path: Path) -> None:
+    config_dir = tmp_path / "configs"
+    (config_dir / "base").mkdir(parents=True)
+    write_config(config_dir / "cpo" / "cpo_controlled.yaml", "cpo")
+    args = argparse.Namespace(
+        methods=["cpo"],
+        config_dir=config_dir,
+        train_root=Path("data/processed"),
+        split="train.jsonl",
+        model_name_or_path="Qwen/Qwen2.5-1.5B-Instruct",
+        output_dir=tmp_path / "sweeps",
+        learning_rates=[1e-5],
+        betas=[0.005],
+        alphas=[0.0, 0.3],
+        kl_coefs=[0.0, 1e-3],
+        max_grad_norms=[0.3],
+        weight_decay=None,
+        z_baselines=["token_kl"],
+        num_train_epochs=1.0,
+        max_seq_length=512,
+        per_device_train_batch_size=4,
+        gradient_accumulation_steps=4,
+        logging_steps=5,
+        terminal_log_steps=500,
+        save_steps=500,
+        save_total_limit=1,
+        warmup_steps=10,
+        seed=42,
+    )
+
+    runs = build_sweep_configs(args)
+
+    assert len(runs) == 4
+    assert {(run["alpha"], run["kl_coef"]) for run in runs} == {
+        (0.0, 0.0),
+        (0.0, 1e-3),
+        (0.3, 0.0),
+        (0.3, 1e-3),
+    }
+    assert all(run["config"]["kl_coef"] == run["kl_coef"] for run in runs)
+    assert all("_kl" in run["run_name"] for run in runs)
+
+
 def test_write_sweep_creates_manifest_and_configs(tmp_path: Path) -> None:
     runs = [
         {
