@@ -33,6 +33,9 @@ dist/
 *~
 
 # Large/local artifacts
+experiments/*
+outputs*
+results*
 scripts/local/download_cpo_beta_sweep.sh
 experiments/E5_cluster_ablation/embedding_4/cluster_jsonl/*
 experiments/E5_cluster_ablation/embedding_4/all_clusters.jsonl
