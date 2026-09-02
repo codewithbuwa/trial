@@ -309,25 +309,40 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--judge-timeout", type=float, default=60.0)
     parser.add_argument("--judge-max-length", type=int, default=4096)
-    parser.add_argument(
+    position_group = parser.add_mutually_exclusive_group()
+    position_group.add_argument(
         "--position-balanced",
         action="store_true",
         help="Judge every model pair in both A/B orders to cancel response-position bias.",
     )
-    parser.add_argument(
+    position_group.add_argument(
         "--randomize-positions",
         action="store_true",
-        help=(
-            "Judge each model pair once with seeded random A/B presentation per prompt. "
-            "This is mutually exclusive with --position-balanced."
-        ),
+        help="Judge each pair once with seeded random A/B presentation (the default).",
+    )
+    position_group.add_argument(
+        "--fixed-positions",
+        action="store_true",
+        help="Judge each model pair once in deterministic model insertion order.",
     )
     return parser.parse_args()
 
 
 def validate_judge_settings(args: argparse.Namespace) -> str:
-    if getattr(args, "position_balanced", False) and getattr(args, "randomize_positions", False):
-        raise ValueError("--randomize-positions cannot be used with --position-balanced")
+    position_flags = (
+        bool(getattr(args, "position_balanced", False)),
+        bool(getattr(args, "randomize_positions", False)),
+        bool(getattr(args, "fixed_positions", False)),
+    )
+    if sum(position_flags) > 1:
+        raise ValueError("position selection flags cannot be used together")
+    if args.judge_provider == "skywork" and getattr(args, "position_balanced", False):
+        print(
+            "Warning: --position-balanced is redundant for independent Skywork scores; "
+            "evaluating each pair once with randomized positions."
+        )
+        args.position_balanced = False
+        args.randomize_positions = True
     if args.judge_provider == "openai":
         api_key = os.environ.get(args.api_key_env)
         if not api_key:
@@ -381,7 +396,7 @@ def main() -> None:
         else None
     )
     records: list[dict[str, Any]] = []
-    randomize_positions = args.randomize_positions or not args.position_balanced
+    randomize_positions = not args.position_balanced and not args.fixed_positions
     for comparison in build_comparisons(
         rows,
         generations,
@@ -439,6 +454,12 @@ def main() -> None:
     with args.output_jsonl.open("w", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    if args.position_balanced:
+        position_strategy = "position_balanced"
+    elif randomize_positions:
+        position_strategy = "randomized"
+    else:
+        position_strategy = "fixed"
     summary = {
         "eval_file": str(args.eval_file) if not args.generations_file else None,
         "generations_file": str(args.generations_file) if args.generations_file else None,
@@ -449,7 +470,7 @@ def main() -> None:
         else None,
         "position_balanced": args.position_balanced,
         "position_randomized": randomize_positions,
-        "position_strategy": "position_balanced" if args.position_balanced else "randomized",
+        "position_strategy": position_strategy,
         "position_seed": args.seed,
         "generation_lengths": generation_length_summary(generations),
         **summarize_judgments(records),
