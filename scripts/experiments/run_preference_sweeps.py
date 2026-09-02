@@ -21,6 +21,7 @@ DEFAULT_BETAS = [0.01, 0.02, 0.05]
 DEFAULT_MAX_GRAD_NORMS = [0.3, 1.0]
 DEFAULT_ALPHAS = [0.3]
 DEFAULT_CPO_Z_BASELINES = ["token_kl"]
+DEFAULT_CPO_KL_COEFS = [0.0]
 BASE_CONFIG_FILES = ("model.yaml", "data.yaml", "lora.yaml", "training.yaml")
 
 
@@ -78,10 +79,16 @@ def build_sweep_configs(args: argparse.Namespace) -> list[dict[str, Any]]:
         alphas = args.alphas or DEFAULT_ALPHAS
         max_grad_norms = args.max_grad_norms or DEFAULT_MAX_GRAD_NORMS
         z_baselines = args.z_baselines or DEFAULT_CPO_Z_BASELINES
+        requested_kl_coefs = getattr(args, "kl_coefs", None)
         alpha_values: list[float | None] = alphas if method == "cpo" else [None]
         z_baseline_values: list[str | None] = z_baselines if method == "cpo" else [None]
-        for learning_rate, beta, max_grad_norm, alpha, z_baseline in product(
-            lrs, betas, max_grad_norms, alpha_values, z_baseline_values
+        kl_coef_values: list[float | None]
+        if method == "cpo":
+            kl_coef_values = requested_kl_coefs or DEFAULT_CPO_KL_COEFS
+        else:
+            kl_coef_values = [None]
+        for learning_rate, beta, max_grad_norm, alpha, z_baseline, kl_coef in product(
+            lrs, betas, max_grad_norms, alpha_values, z_baseline_values, kl_coef_values
         ):
             name_parts = [
                 method,
@@ -93,6 +100,8 @@ def build_sweep_configs(args: argparse.Namespace) -> list[dict[str, Any]]:
                 name_parts.append(f"a{slug_float(alpha)}")
             if z_baseline is not None:
                 name_parts.append(z_baseline.replace("_", "-"))
+            if method == "cpo" and requested_kl_coefs is not None:
+                name_parts.append(f"kl{slug_float(float(kl_coef))}")
             run_name = "_".join(name_parts)
             output_dir = args.output_dir / run_name
             config_path = args.output_dir / "configs" / f"{run_name}.yaml"
@@ -129,6 +138,8 @@ def build_sweep_configs(args: argparse.Namespace) -> list[dict[str, Any]]:
                 config["alpha"] = alpha
             if z_baseline is not None:
                 config["z_baseline"] = z_baseline
+            if kl_coef is not None:
+                config["kl_coef"] = kl_coef
             command = [
                 "poetry",
                 "run",
@@ -150,6 +161,7 @@ def build_sweep_configs(args: argparse.Namespace) -> list[dict[str, Any]]:
                     "alpha": alpha,
                     "max_grad_norm": max_grad_norm,
                     "z_baseline": z_baseline,
+                    "kl_coef": kl_coef,
                 }
             )
     return runs
@@ -176,6 +188,7 @@ def write_sweep(runs: list[dict[str, Any]], output_dir: Path) -> Path:
                 "alpha": run["alpha"],
                 "max_grad_norm": run["max_grad_norm"],
                 "z_baseline": run["z_baseline"],
+                "kl_coef": run.get("kl_coef"),
             }
             manifest.write(json.dumps(record) + "\n")
     return manifest_path
@@ -238,6 +251,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rates", type=parse_float_list)
     parser.add_argument("--betas", type=parse_float_list)
     parser.add_argument("--alphas", type=parse_float_list)
+    parser.add_argument(
+        "--kl-coefs",
+        type=parse_float_list,
+        help="Comma-separated CPO KL regularization coefficients.",
+    )
     parser.add_argument("--max-grad-norms", type=parse_float_list)
     parser.add_argument("--weight-decay", type=float)
     parser.add_argument(
@@ -297,6 +315,7 @@ def main() -> None:
             "alpha": run["alpha"],
             "max_grad_norm": run["max_grad_norm"],
             "z_baseline": run["z_baseline"],
+            "kl_coef": run.get("kl_coef"),
             "train_returncode": completed.returncode,
             "status": "ok" if completed.returncode == 0 else "train_failed",
         }
