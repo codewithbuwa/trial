@@ -83,13 +83,15 @@ def generate_model_outputs(
     temperature: float,
     top_p: float,
     batch_size: int,
+    seed: int,
 ) -> list[str]:
     import torch
-    from transformers import AutoTokenizer
+    from transformers import AutoTokenizer, set_seed
 
     from cpo_trl.data.formatting import format_prompt
     from cpo_trl.models.peft import load_causal_lm_for_training
 
+    set_seed(seed)
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -346,6 +348,7 @@ def main() -> None:
                 temperature=args.temperature,
                 top_p=args.top_p,
                 batch_size=args.batch_size,
+                seed=args.seed,
             )
             for name, path in model_specs
         }
