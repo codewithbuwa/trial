@@ -1,0 +1,34 @@
+{
+  "source_file": "/Users/jordanbuwa/Documents/trial/outputs_final_download/final_method_eval/generations/final_methods_generations.jsonl",
+  "tokenizer_file": "/Users/jordanbuwa/Documents/trial/outputs_final_download/dpo_final/dpo_lr1em05_b0p005_gn0p3/tokenizer.json",
+  "criterion": "response_tokens < 256",
+  "classification_limitation": "Inferred from retokenized response length because finish_reason/EOS metadata is absent from the source generations.",
+  "models": [
+    "CPO_A03",
+    "CPO_A05",
+    "CPO_A07",
+    "CPO_UNARY",
+    "DPO",
+    "KTO"
+  ],
+  "source_non_truncated_counts_by_model": {
+    "CPO_A03": 937,
+    "CPO_A05": 919,
+    "CPO_A07": 919,
+    "CPO_UNARY": 987,
+    "DPO": 978,
+    "KTO": 1080
+  },
+  "shared_prompt_count": 703,
+  "rows_per_model": {
+    "CPO_A03": 703,
+    "CPO_A05": 703,
+    "CPO_A07": 703,
+    "CPO_UNARY": 703,
+    "DPO": 703,
+    "KTO": 703
+  },
+  "total_rows": 4218,
+  "output_file": "/Users/jordanbuwa/Documents/trial/outputs_final_download/final_method_eval/analysis/non_truncated_prompt_matched_703_per_model.jsonl",
+  "output_sha256": "20f6b708e787f435629cfe9b51d5b48430bee4e4f8a5bb7b602455ce19310c58"
+}
