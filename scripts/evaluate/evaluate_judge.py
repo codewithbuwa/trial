@@ -309,6 +309,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--judge-timeout", type=float, default=60.0)
     parser.add_argument("--judge-max-length", type=int, default=4096)
+    parser.add_argument("--skywork-tie-threshold", type=float, default=0.0)
     position_group = parser.add_mutually_exclusive_group()
     position_group.add_argument(
         "--position-balanced",
@@ -336,6 +337,8 @@ def validate_judge_settings(args: argparse.Namespace) -> str:
     )
     if sum(position_flags) > 1:
         raise ValueError("position selection flags cannot be used together")
+    if getattr(args, "skywork_tie_threshold", 0.0) < 0:
+        raise ValueError("--skywork-tie-threshold must be non-negative")
     if args.judge_provider == "skywork" and getattr(args, "position_balanced", False):
         print(
             "Warning: --position-balanced is redundant for independent Skywork scores; "
@@ -432,6 +435,7 @@ def main() -> None:
                 input_text=comparison["input"],
                 response_a=comparison["response_a"],
                 response_b=comparison["response_b"],
+                tie_threshold=args.skywork_tie_threshold,
             )
         elif args.judge_provider == "skywork":
             judgment = skywork_judge(
