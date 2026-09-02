@@ -302,7 +302,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--judge-provider",
         choices=("heuristic", "openai", "prometheus", "pairrm", "skywork"),
-        default="heuristic",
+        required=True,
     )
     parser.add_argument("--judge-model", default=os.environ.get("OPENAI_JUDGE_MODEL"))
     parser.add_argument("--openai-base-url", default=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"))
