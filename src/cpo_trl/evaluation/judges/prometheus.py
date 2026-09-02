@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import json
-import urllib.error
-import urllib.request
-
 from cpo_trl.evaluation.judges.common import parse_judge_json
+from cpo_trl.evaluation.judges.http import request_chat_completion
 
 
 def prometheus_prompt(
@@ -39,7 +36,9 @@ def prometheus_judge(
     model: str,
     base_url: str,
     timeout: float,
-) -> dict[str, str]:
+    max_retries: int = 3,
+    retry_base_seconds: float = 1.0,
+) -> dict[str, object]:
     prompt = prometheus_prompt(
         instruction=instruction,
         input_text=input_text,
@@ -51,22 +50,13 @@ def prometheus_judge(
         "temperature": 0,
         "messages": [{"role": "user", "content": prompt}],
     }
-    request = urllib.request.Request(
-        f"{base_url.rstrip('/')}/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": "Bearer dummy",
-            "Content-Type": "application/json",
-        },
-        method="POST",
+    content = request_chat_completion(
+        payload=payload,
+        base_url=base_url,
+        authorization="Bearer dummy",
+        timeout=timeout,
+        max_retries=max_retries,
+        retry_base_seconds=retry_base_seconds,
+        evaluator_name="Prometheus judge",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"Prometheus judge request failed with HTTP {exc.code}: {detail}"
-        ) from exc
-    content = body["choices"][0]["message"]["content"]
     return parse_judge_json(content)
