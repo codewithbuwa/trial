@@ -255,6 +255,23 @@ def load_generation_records(path: Path) -> tuple[list[dict[str, Any]], dict[str,
         if missing:
             raise ValueError(f"prompt_id={prompt_id!r} is missing generation(s): {missing}")
         first = prompt_records[model_names[0]]
+        expected_metadata = (
+            first["instruction"],
+            first.get("input", ""),
+            first.get("cluster_id", "unknown"),
+        )
+        for model in model_names[1:]:
+            record = prompt_records[model]
+            metadata = (
+                record["instruction"],
+                record.get("input", ""),
+                record.get("cluster_id", "unknown"),
+            )
+            if metadata != expected_metadata:
+                raise ValueError(
+                    f"inconsistent prompt metadata for prompt_id={prompt_id!r}: "
+                    f"{model_names[0]!r} and {model!r} differ"
+                )
         rows.append(
             {
                 "prompt_id": prompt_id,
