@@ -621,6 +621,29 @@ def main() -> None:
     resumed_comparisons = sum(
         record.get("status", "ok") == "ok" for record in records_by_id.values()
     )
+    if args.resume and records_by_id:
+        # Compact the resume file to one record per comparison, dropping stale
+        # duplicates and the non-ok records that the loop below re-attempts (and
+        # would otherwise re-append), so repeated resumes cannot grow the file.
+        retained = [
+            records_by_id[record_id]
+            for record_id in planned
+            if record_id in records_by_id
+            and records_by_id[record_id].get("status", "ok") == "ok"
+        ]
+        temporary = args.output_jsonl.with_name(
+            f".{args.output_jsonl.name}.{os.getpid()}.compact.tmp"
+        )
+        try:
+            with temporary.open("w", encoding="utf-8") as handle:
+                for record in retained:
+                    handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, args.output_jsonl)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
     output_mode = "a" if args.resume else "w"
     newly_attempted = 0
     with args.output_jsonl.open(output_mode, encoding="utf-8") as handle:

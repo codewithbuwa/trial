@@ -326,7 +326,11 @@ def sequence_logp_sums_and_counts(
     outputs = model(input_ids=input_ids, attention_mask=attention_mask)
     logits = outputs.logits[:, :-1, :]
     labels = input_ids[:, 1:]
-    token_logps = torch.gather(torch.log_softmax(logits, dim=-1), 2, labels.unsqueeze(-1)).squeeze(-1)
+    # Upcast to float32 before log_softmax so summed log-probs stay accurate when
+    # the model runs in a reduced precision (matches sequence_logps_with_token_kl).
+    token_logps = torch.gather(
+        torch.log_softmax(logits.float(), dim=-1), 2, labels.unsqueeze(-1)
+    ).squeeze(-1)
     token_mask = attention_mask[:, 1:].bool()
     positions = torch.arange(labels.shape[1], device=labels.device).unsqueeze(0)
     response_mask = positions >= (starts.to(labels.device).unsqueeze(1) - 1)

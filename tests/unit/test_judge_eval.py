@@ -703,3 +703,71 @@ def test_main_checkpoints_and_resumes_completed_comparisons(
     summary = json.loads(summary_path.read_text())
     assert summary["resumed_comparisons"] == 1
     assert summary["newly_attempted_comparisons"] == 0
+
+
+def test_main_compacts_failed_records_across_resumes(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_path = tmp_path / "pairwise.jsonl"
+    summary_path = tmp_path / "summary.json"
+    args = argparse.Namespace(
+        generations_file=tmp_path / "generations.jsonl",
+        eval_file=tmp_path / "validation.jsonl",
+        models=None,
+        output_jsonl=output_path,
+        summary_json=summary_path,
+        max_prompts=None,
+        max_prompt_length=128,
+        max_new_tokens=32,
+        temperature=0.0,
+        top_p=0.9,
+        batch_size=1,
+        seed=42,
+        judge_provider="heuristic",
+        judge_model=None,
+        openai_base_url="http://unused",
+        api_key_env="OPENAI_API_KEY",
+        judge_timeout=1.0,
+        judge_max_length=128,
+        judge_max_retries=0,
+        judge_retry_base_seconds=0.0,
+        judge_parse_retries=0,
+        skywork_tie_threshold=0.0,
+        checkpoint_every=1,
+        resume=True,
+        position_balanced=False,
+        randomize_positions=False,
+        fixed_positions=False,
+    )
+    rows = [{"prompt_id": "p1", "instruction": "prompt", "input": ""}]
+    generations = {"A": ["short"], "B": ["a longer response"]}
+    state = {"fail": True}
+
+    def flaky_heuristic(response_a: str, response_b: str) -> dict[str, object]:
+        if state["fail"]:
+            raise RuntimeError("judge unavailable")
+        return {"winner": "B", "reason": "better", "status": "ok"}
+
+    monkeypatch.setattr(evaluate_judge, "parse_args", lambda: args)
+    monkeypatch.setattr(
+        evaluate_judge,
+        "load_generation_records",
+        lambda path: (rows, generations),
+    )
+    monkeypatch.setattr(evaluate_judge, "heuristic_judge", flaky_heuristic)
+
+    evaluate_judge.main()
+    first_lines = output_path.read_text().splitlines()
+    assert len(first_lines) == 1
+    assert json.loads(first_lines[0])["status"] == "error"
+
+    state["fail"] = False
+    evaluate_judge.main()
+
+    # The stale error record is compacted away rather than duplicated.
+    final_lines = output_path.read_text().splitlines()
+    assert len(final_lines) == 1
+    record = json.loads(final_lines[0])
+    assert record["status"] == "ok"
+    assert record["winner_model"] == "B"
