@@ -8,6 +8,7 @@ import math
 import os
 import random
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,9 @@ from cpo_trl.evaluation.judges import (
 )
 
 JUDGE_EVALUATOR_VERSION = 2
+# Providers that judge over the network (one HTTP request per comparison) and so
+# benefit from concurrent in-flight requests; local model judges do not.
+NETWORK_JUDGE_PROVIDERS = {"openai", "prometheus"}
 
 
 def response_length_stats(responses: list[str]) -> dict[str, float | int | None]:
@@ -409,6 +413,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--judge-max-retries", type=int, default=3)
     parser.add_argument("--judge-retry-base-seconds", type=float, default=1.0)
     parser.add_argument("--judge-parse-retries", type=int, default=1)
+    parser.add_argument(
+        "--judge-concurrency",
+        type=int,
+        default=1,
+        help=(
+            "Number of concurrent in-flight requests for network judges "
+            "(openai/prometheus). Ignored for local judges (heuristic/pairrm/skywork)."
+        ),
+    )
     parser.add_argument("--skywork-tie-threshold", type=float, default=0.0)
     parser.add_argument("--checkpoint-every", type=int, default=1)
     parser.add_argument(
@@ -454,6 +467,8 @@ def validate_judge_settings(args: argparse.Namespace) -> str:
         raise ValueError("--judge-parse-retries must be non-negative")
     if getattr(args, "checkpoint_every", 1) < 1:
         raise ValueError("--checkpoint-every must be at least 1")
+    if getattr(args, "judge_concurrency", 1) < 1:
+        raise ValueError("--judge-concurrency must be at least 1")
     if getattr(args, "skywork_tie_threshold", 0.0) < 0:
         raise ValueError("--skywork-tie-threshold must be non-negative")
     if args.judge_provider == "skywork" and getattr(args, "position_balanced", False):
@@ -646,58 +661,91 @@ def main() -> None:
                 temporary.unlink()
     output_mode = "a" if args.resume else "w"
     newly_attempted = 0
-    with args.output_jsonl.open(output_mode, encoding="utf-8") as handle:
-        for record_id, comparison in planned.items():
-            prior = records_by_id.get(record_id)
-            if prior and prior.get("status", "ok") == "ok":
-                continue
-            try:
-                judgment = evaluate_comparison(
-                    comparison,
-                    args=args,
-                    api_key=api_key,
-                    pairrm_ranker=pairrm_ranker,
-                    skywork_reward_model=skywork_reward_model,
-                )
-            except Exception as exc:
-                judgment = {
-                    "winner": None,
-                    "winner_model": None,
-                    "reason": str(exc),
-                    "status": "error",
-                    "error_type": type(exc).__name__,
-                }
-            winner = judgment.get("winner")
-            winner_model = None
-            if judgment.get("status", "ok") == "ok":
-                if winner == "A":
-                    winner_model = comparison["model_a"]
-                elif winner == "B":
-                    winner_model = comparison["model_b"]
-                elif winner == "tie":
-                    winner_model = "tie"
-                else:
-                    judgment = {
-                        **judgment,
-                        "status": "parse_error",
-                        "reason": f"evaluator returned invalid winner: {winner!r}",
-                    }
-            record = {
-                **comparison,
-                **judgment,
-                "winner_model": winner_model,
-                "comparison_id": record_id,
-                "judge_provider": args.judge_provider,
-                "judge_model": args.judge_model,
-                "judge_configuration": active_judge_configuration,
-                "evaluator_version": JUDGE_EVALUATOR_VERSION,
+
+    def build_record(record_id: str, comparison: dict[str, Any]) -> dict[str, Any]:
+        """Judge one comparison and assemble its output record (thread-safe)."""
+        try:
+            judgment = evaluate_comparison(
+                comparison,
+                args=args,
+                api_key=api_key,
+                pairrm_ranker=pairrm_ranker,
+                skywork_reward_model=skywork_reward_model,
+            )
+        except Exception as exc:
+            judgment = {
+                "winner": None,
+                "winner_model": None,
+                "reason": str(exc),
+                "status": "error",
+                "error_type": type(exc).__name__,
             }
-            records_by_id[record_id] = record
+        winner = judgment.get("winner")
+        winner_model = None
+        if judgment.get("status", "ok") == "ok":
+            if winner == "A":
+                winner_model = comparison["model_a"]
+            elif winner == "B":
+                winner_model = comparison["model_b"]
+            elif winner == "tie":
+                winner_model = "tie"
+            else:
+                judgment = {
+                    **judgment,
+                    "status": "parse_error",
+                    "reason": f"evaluator returned invalid winner: {winner!r}",
+                }
+        return {
+            **comparison,
+            **judgment,
+            "winner_model": winner_model,
+            "comparison_id": record_id,
+            "judge_provider": args.judge_provider,
+            "judge_model": args.judge_model,
+            "judge_configuration": active_judge_configuration,
+            "evaluator_version": JUDGE_EVALUATOR_VERSION,
+        }
+
+    pending = [
+        (record_id, comparison)
+        for record_id, comparison in planned.items()
+        if not (
+            (prior := records_by_id.get(record_id))
+            and prior.get("status", "ok") == "ok"
+        )
+    ]
+    # Only network judges gain from concurrency; local model judges share one GPU
+    # and are left serial.
+    concurrency = (
+        args.judge_concurrency
+        if args.judge_provider in NETWORK_JUDGE_PROVIDERS
+        else 1
+    )
+    with args.output_jsonl.open(output_mode, encoding="utf-8") as handle:
+
+        def persist(record: dict[str, Any]) -> None:
+            nonlocal newly_attempted
+            records_by_id[record["comparison_id"]] = record
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
             handle.flush()
             newly_attempted += 1
             if newly_attempted % args.checkpoint_every == 0:
                 os.fsync(handle.fileno())
+
+        if concurrency > 1 and len(pending) > 1:
+            # Judge concurrently; results are persisted on the main thread as each
+            # future completes, so writes/checkpoints stay single-threaded and
+            # resume-safe even though judgments finish out of order.
+            with ThreadPoolExecutor(max_workers=concurrency) as executor:
+                futures = [
+                    executor.submit(build_record, record_id, comparison)
+                    for record_id, comparison in pending
+                ]
+                for future in as_completed(futures):
+                    persist(future.result())
+        else:
+            for record_id, comparison in pending:
+                persist(build_record(record_id, comparison))
         if newly_attempted % args.checkpoint_every:
             os.fsync(handle.fileno())
     records = [records_by_id[record_id] for record_id in planned]
@@ -720,6 +768,11 @@ def main() -> None:
         "position_randomized": randomize_positions,
         "position_strategy": position_strategy,
         "position_seed": args.seed,
+        "judge_concurrency": (
+            args.judge_concurrency
+            if args.judge_provider in NETWORK_JUDGE_PROVIDERS
+            else 1
+        ),
         "resume_enabled": args.resume,
         "resumed_comparisons": resumed_comparisons,
         "newly_attempted_comparisons": newly_attempted,

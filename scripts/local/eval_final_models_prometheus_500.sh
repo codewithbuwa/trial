@@ -17,6 +17,7 @@ MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-768}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-512}"
 GEN_BATCH_SIZE="${GEN_BATCH_SIZE:-4}"
 JUDGE_TIMEOUT="${JUDGE_TIMEOUT:-120}"
+JUDGE_CONCURRENCY="${JUDGE_CONCURRENCY:-16}"
 SEED="${SEED:-42}"
 
 MODELS=(
@@ -69,6 +70,7 @@ poetry run python scripts/evaluate/evaluate_judge.py \
   --judge-model "$PROMETHEUS_JUDGE_MODEL" \
   --openai-base-url "$PROMETHEUS_BASE_URL" \
   --judge-timeout "$JUDGE_TIMEOUT" \
+  --judge-concurrency "$JUDGE_CONCURRENCY" \
   --randomize-positions \
   --output-jsonl "$RUN_ROOT/prometheus_pairwise.jsonl" \
   --summary-json "$RUN_ROOT/prometheus_summary.json"

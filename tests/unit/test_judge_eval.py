@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import threading
+import time
 import urllib.error
 
 import pytest
@@ -771,3 +773,78 @@ def test_main_compacts_failed_records_across_resumes(
     record = json.loads(final_lines[0])
     assert record["status"] == "ok"
     assert record["winner_model"] == "B"
+
+
+def test_main_judges_network_provider_concurrently(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output_path = tmp_path / "pairwise.jsonl"
+    summary_path = tmp_path / "summary.json"
+    args = argparse.Namespace(
+        generations_file=tmp_path / "generations.jsonl",
+        eval_file=tmp_path / "validation.jsonl",
+        models=None,
+        output_jsonl=output_path,
+        summary_json=summary_path,
+        max_prompts=None,
+        max_prompt_length=128,
+        max_new_tokens=32,
+        temperature=0.0,
+        top_p=0.9,
+        batch_size=1,
+        seed=42,
+        judge_provider="prometheus",
+        judge_model="judge",
+        openai_base_url="http://localhost:8000/v1",
+        api_key_env="OPENAI_API_KEY",
+        judge_timeout=1.0,
+        judge_max_length=128,
+        judge_max_retries=0,
+        judge_retry_base_seconds=0.0,
+        judge_parse_retries=0,
+        judge_concurrency=4,
+        skywork_tie_threshold=0.0,
+        checkpoint_every=1,
+        resume=True,
+        position_balanced=False,
+        randomize_positions=False,
+        fixed_positions=False,
+    )
+    rows = [
+        {"prompt_id": "p0", "instruction": "one", "input": ""},
+        {"prompt_id": "p1", "instruction": "two", "input": ""},
+    ]
+    generations = {"A": ["a0", "a1"], "B": ["b0", "b1"], "C": ["c0", "c1"]}
+
+    max_in_flight = 0
+    inflight = 0
+    lock = threading.Lock()
+
+    def fake_prometheus(**kwargs: object) -> dict[str, object]:
+        nonlocal max_in_flight, inflight
+        with lock:
+            inflight += 1
+            max_in_flight = max(max_in_flight, inflight)
+        time.sleep(0.02)
+        with lock:
+            inflight -= 1
+        return {"winner": "A", "status": "ok", "reason": "first response"}
+
+    monkeypatch.setattr(evaluate_judge, "parse_args", lambda: args)
+    monkeypatch.setattr(
+        evaluate_judge, "load_generation_records", lambda path: (rows, generations)
+    )
+    monkeypatch.setattr(evaluate_judge, "prometheus_judge", fake_prometheus)
+
+    evaluate_judge.main()
+
+    lines = output_path.read_text().splitlines()
+    assert len(lines) == 6  # 3 model pairs x 2 prompts
+    records = [json.loads(line) for line in lines]
+    assert all(r["status"] == "ok" for r in records)
+    assert all(r["winner_model"] == r["model_a"] for r in records)  # winner "A" -> model_a
+    assert max_in_flight > 1  # requests were actually judged concurrently
+    summary = json.loads(summary_path.read_text())
+    assert summary["judge_concurrency"] == 4
+    assert summary["total_comparisons"] == 6
