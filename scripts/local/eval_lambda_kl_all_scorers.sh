@@ -15,10 +15,13 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
 # --- Paths / config -----------------------------------------------------------
-CKPT_ROOT="${CKPT_ROOT:-outputs/cpo_kl_sweep}"
+# Checkpoints and large eval artifacts live in scratch, matching the sweep runner
+# (train_cpo_kl_sweep.sh writes to $SCRATCH_DIR/cpo_kl_sweep).
+: "${SCRATCH_DIR:=/scratch/jordan/trial/outputs}"
+CKPT_ROOT="${CKPT_ROOT:-$SCRATCH_DIR/cpo_kl_sweep}"
 REFERENCE_MODEL="${REFERENCE_MODEL:-Qwen/Qwen2.5-1.5B-Instruct}"
 EVAL_FILE="${EVAL_FILE:-experiments/E5_cluster_ablation/embedding_4/dpo/validation.jsonl}"
-RUN_ROOT="${RUN_ROOT:-outputs/lambda_kl_all_scorers}"
+RUN_ROOT="${RUN_ROOT:-$SCRATCH_DIR/lambda_kl_all_scorers}"
 
 MAX_PROMPTS="${MAX_PROMPTS:-500}"
 MAX_PROMPT_LENGTH="${MAX_PROMPT_LENGTH:-768}"
