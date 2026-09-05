@@ -150,10 +150,27 @@ run_judge() {
     "$@"
 }
 
-[[ "$RUN_PAIRRM"     == "1" ]] && run_judge pairrm  "$PAIRRM_JUDGE_MODEL"
-[[ "$RUN_SKYWORK"    == "1" ]] && run_judge skywork "$SKYWORK_JUDGE_MODEL"
-[[ "$RUN_PROMETHEUS" == "1" ]] && run_judge prometheus "$PROMETHEUS_JUDGE_MODEL" \
+# One judge failing (e.g. PairRM without llm-blender, or a Prometheus endpoint
+# that's down) must not abort the others. Run each in an `if` so `set -e` doesn't
+# kill the script, and record which ones failed.
+FAILED_JUDGES=()
+try_judge() {  # provider, model, [extra args...]
+  local provider="$1"
+  if run_judge "$@"; then
+    return 0
+  fi
+  echo "WARNING: '$provider' judge failed (exit $?); continuing with the others." >&2
+  FAILED_JUDGES+=("$provider")
+}
+
+[[ "$RUN_PAIRRM"     == "1" ]] && try_judge pairrm  "$PAIRRM_JUDGE_MODEL"
+[[ "$RUN_SKYWORK"    == "1" ]] && try_judge skywork "$SKYWORK_JUDGE_MODEL"
+[[ "$RUN_PROMETHEUS" == "1" ]] && try_judge prometheus "$PROMETHEUS_JUDGE_MODEL" \
   --openai-base-url "$PROMETHEUS_BASE_URL"
+
+if (( ${#FAILED_JUDGES[@]} > 0 )); then
+  echo "NOTE: judges that did not complete: ${FAILED_JUDGES[*]}" >&2
+fi
 
 echo "Done. Results under: $RUN_ROOT"
 echo "  generations:     $GEN_JSONL"

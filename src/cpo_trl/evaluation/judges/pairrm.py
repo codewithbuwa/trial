@@ -3,7 +3,31 @@ from __future__ import annotations
 from typing import Any
 
 
+def _install_transformers_cache_shim() -> None:
+    """Make old llm-blender importable under transformers>=5.
+
+    llm-blender does ``from transformers.utils.hub import TRANSFORMERS_CACHE``,
+    but that name was removed in transformers 5. Alias it to the current Hugging
+    Face hub cache path so the import succeeds without downgrading transformers.
+    """
+    import transformers.utils.hub as hub
+
+    if hasattr(hub, "TRANSFORMERS_CACHE"):
+        return
+    try:
+        from huggingface_hub.constants import HF_HUB_CACHE as cache_path
+    except Exception:
+        import os
+
+        cache_path = os.environ.get(
+            "HF_HUB_CACHE",
+            os.path.expanduser("~/.cache/huggingface/hub"),
+        )
+    hub.TRANSFORMERS_CACHE = cache_path
+
+
 def load_pairrm_ranker(model_name: str) -> Any:
+    _install_transformers_cache_shim()
     try:
         import llm_blender
     except ImportError as exc:
